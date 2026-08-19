@@ -427,7 +427,7 @@ function EssentialDialogContent({
             {showCloseButton && (
               <EssentialDialogClose
                 aria-label="Close"
-                className="absolute top-3 right-3 inline-flex size-8 items-center justify-center rounded-lg opacity-60 transition-opacity hover:opacity-100"
+                className="absolute top-3 right-3 inline-flex size-8 items-center justify-center rounded-full opacity-60 transition-opacity hover:opacity-100"
               >
                 <svg
                   aria-hidden="true"

@@ -152,13 +152,9 @@ The trigger is the origin, so it has to be a real DOM node — that is what
 
 - **The surface animates real `width`/`height`, not `scale`** (`scale: false` in
   both Flip calls), so its radius stays a radius and its border stays crisp.
-- **The origin should speak the same shape language as the dialog.** A circular
-  or pill trigger has to un-round itself as well as grow, and the first third of
-  the morph reads as a blob rather than as a dialog arriving; a rounded rectangle
-  going from 16px to 24px never passes through a circle. If you do want a pill,
-  give it `border-radius: 50%` of its height and never `999px` — a radius clamps
-  to half the shorter side, so `999px` renders as a circle at every intermediate
-  size on the way up.
+- **A pill trigger needs `border-radius: 50%` of its height, never `999px`.** A
+  radius clamps to half the shorter side, so `999px` renders as a circle at every
+  intermediate size on the way up.
 - **Colour and radius hand over in ~18% of the duration**, not across all of it.
   Spread over the full morph, the box reads as a growing button rather than an
   arriving dialog.
