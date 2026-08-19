@@ -36,7 +36,7 @@ function ensureEases() {
 
 /* anything a person can type in, press or select owns the gesture */
 const INTERACTIVE =
-  "input, textarea, select, button, a, label, [contenteditable], [data-no-drag]"
+  "input, textarea, select, button, a, label, summary, video, audio, [contenteditable], [role='button'], [role='slider'], [role='textbox'], [data-no-drag]"
 
 export type MorphDialogOptions = {
   /** Seconds. The trigger → dialog morph. */
@@ -322,25 +322,35 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
      what it read and what you see is visible without a debugger. */
   const lastLogRef = React.useRef(0)
   const log = React.useCallback(
-    (label: string, data?: unknown, throttleMs = 0) => {
+    (label: string, data?: unknown | (() => unknown), throttleMs = 0) => {
       if (!optsRef.current.debug) return
       if (throttleMs) {
         const now = performance.now()
         if (now - lastLogRef.current < throttleMs) return
         lastLogRef.current = now
       }
+      /* Callers in the per-frame path pass a thunk, so with debug off nothing is
+         measured, rounded or allocated sixty times a second. */
+      const payload =
+        typeof data === "function" ? (data as () => unknown)() : data
       console.log(
         `%c[essential-dialog]%c ${label}`,
         "color:#09ee61;font-weight:600",
         "color:inherit",
-        data ?? ""
+        payload ?? ""
       )
     },
     []
   )
 
   const tlRef = React.useRef<gsap.core.Timeline | null>(null)
+  /* Kept so unmounting mid-close cannot leave a timeline animating detached nodes
+     and then running its onComplete against them. */
+  const closeTlRef = React.useRef<gsap.core.Timeline | null>(null)
   const closingRef = React.useRef(false)
+  /* An open() that arrives while the close is still running is remembered rather
+     than dropped, so a controlled `open` cannot desync from the dialog. */
+  const pendingOpenRef = React.useRef(false)
   const frozenRef = React.useRef<{ w: number; h: number } | null>(null)
   /* Whether the origin is round, and the radius the dialog rests at. Set on
      build, reused by the close so a mid-morph dismiss still knows the target. */
@@ -357,6 +367,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
   React.useEffect(() => {
     return () => {
       tlRef.current?.kill()
+      closeTlRef.current?.kill()
       const saved = scrollLockRef.current
       if (saved) {
         document.body.style.overflow = saved.overflow
@@ -407,8 +418,12 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     const surface = nodes.current.surface
     const win = nodes.current.window
     if (!surface || !win) return
-    const r = size ?? surface.getBoundingClientRect()
-    frozenRef.current = { w: "w" in r ? r.w : r.width, h: "h" in r ? r.h : r.height }
+    if (size) {
+      frozenRef.current = size
+    } else {
+      const r = surface.getBoundingClientRect()
+      frozenRef.current = { w: r.width, h: r.height }
+    }
     const { w, h } = frozenRef.current
     gsap.set(win, {
       width: w,
@@ -486,7 +501,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
 
     log(
       "fit",
-      {
+      () => ({
         surface: `${Math.round(s.width)}×${Math.round(s.height)}`,
         frozen: `${Math.round(f.w)}×${Math.round(f.h)}`,
         scale: Math.round(k * 1000) / 1000,
@@ -497,7 +512,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
         ...(radius === undefined
           ? {}
           : { radius: Math.round(radius * 10) / 10 }),
-      },
+      }),
       120
     )
   }, [log])
@@ -570,6 +585,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
        a scale-and-fade so the component still works headless. */
     if (!trigger) {
       log("open (no trigger — scale/fade fallback)")
+      shapeRef.current = null // nothing to derive a radius from
       pin()
       freezeChild()
       tl.fromTo(
@@ -670,7 +686,13 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
 
   const open = React.useCallback(() => {
     const dialog = nodes.current.dialog
-    if (!dialog || dialog.open || closingRef.current) return
+    if (!dialog || dialog.open) return
+    if (closingRef.current) {
+      /* Mid-close: a dialog still morphing home cannot be reopened, so remember
+         the request and honour it once the close lands. */
+      pendingOpenRef.current = true
+      return
+    }
     lockScroll() // showModal does not lock scroll
     dialog.showModal()
     build()?.play()
@@ -679,13 +701,22 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
   }, [build, lockScroll])
 
   /* The resting dialog is laid out by CSS, so a resize re-centres and reflows it
-     on its own — all that is left to re-derive is whether the content still
-     fits, which decides who owns a touch gesture. */
+     on its own — all that is left to re-derive is whether the content still fits,
+     which decides who owns a touch gesture. A ResizeObserver rather than a resize
+     listener, so content that grows on its own (data arriving, a font loading, a
+     details element opening) counts too, not just viewport changes. */
   React.useEffect(() => {
     if (!isOpen) return
-    const onResize = () => markScrollable()
-    window.addEventListener("resize", onResize)
-    return () => window.removeEventListener("resize", onResize)
+    const win = nodes.current.window
+    if (!win || typeof ResizeObserver === "undefined") {
+      const onResize = () => markScrollable()
+      window.addEventListener("resize", onResize)
+      return () => window.removeEventListener("resize", onResize)
+    }
+    const observer = new ResizeObserver(() => markScrollable())
+    observer.observe(win)
+    for (const child of Array.from(win.children)) observer.observe(child)
+    return () => observer.disconnect()
   }, [isOpen, markScrollable])
 
   /* ------------------------------------------------------------------ close -- */
@@ -700,6 +731,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     if (!dragEl || !surface) return
     const s = surface.getBoundingClientRect()
     gsap.set(dragEl, { clearProps: "transform,transformOrigin" })
+    dragEl.style.willChange = ""
     const d = dragEl.getBoundingClientRect()
     /* position/margin included because the surface may have been settled back to
        a centred grid item: left/top only mean these coordinates once it is out of
@@ -754,6 +786,10 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     const home = () => {
       document.body.style.userSelect = ""
       document.body.style.webkitUserSelect = ""
+      /* The trigger belongs to whoever passed it in: no fingerprints left on it
+         between morphs. */
+      if (trigger) delete trigger.dataset.flipId
+      delete surface.dataset.flipId
       thawChild()
       gsap.set([surface, win, backdrop, dragEl], { clearProps: "all" })
       dialog.close()
@@ -761,10 +797,15 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
       trigger?.focus({ preventScroll: true })
       closingRef.current = false
       settledRef.current = false
+      closeTlRef.current = null
       kRefRef.current = 1
       setIsOpen(false)
       log("closed — all inline styles cleared")
       o.onOpenChange?.(false)
+      if (pendingOpenRef.current) {
+        pendingOpenRef.current = false
+        open()
+      }
     }
 
     log("close", {
@@ -774,6 +815,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     })
 
     const tl = gsap.timeline({ onComplete: home })
+    closeTlRef.current = tl
 
     if (!trigger) {
       tl.to(surface, { scale: 0.9, opacity: 0, duration: D, ease: "power2.in" }, 0)
@@ -822,7 +864,16 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     )
     tl.eventCallback("onUpdate", () => fitFrame())
     tl.to(backdrop, { opacity: 0, duration: 0.25, ease: "power1.in" }, D * 0.6)
-  }, [bakeDrag, freezeChild, thawChild, fitFrame, getTrigger, log, unlockScroll])
+  }, [
+    bakeDrag,
+    freezeChild,
+    thawChild,
+    fitFrame,
+    getTrigger,
+    log,
+    open,
+    unlockScroll,
+  ])
 
   /* ------------------------------------------------------------------- drag -- */
 
@@ -861,6 +912,10 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     }
     surface.setPointerCapture(e.pointerId)
     gsap.killTweensOf(dragEl)
+    /* Advertised for the gesture only, and on the element that actually
+       transforms. A permanent will-change asks the compositor to hold a layer for
+       every dialog on the page, dragged or not. */
+    dragEl.style.willChange = "transform"
     log("drag start", { origin: `${Math.round(e.clientX - r.left)}px ${Math.round(e.clientY - r.top)}px` })
   }, [log])
 
@@ -922,7 +977,10 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
         scale: 1,
         duration: 0.5,
         ease: "expo.out",
-        onComplete: () => gsap.set(dragEl, { transformOrigin: "50% 50%" }),
+        onComplete: () => {
+          gsap.set(dragEl, { transformOrigin: "50% 50%" })
+          dragEl.style.willChange = ""
+        },
       })
     },
     [close, log]

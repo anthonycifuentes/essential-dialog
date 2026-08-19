@@ -409,7 +409,10 @@ function EssentialDialogContent({
                anything taller than the cap scrolls inside instead of being
                clipped out of reach. */
             "relative z-[1] box-border flex flex-col w-(--essential-dialog-width) max-h-(--essential-dialog-max-height)",
-            "cursor-grab touch-none overflow-hidden will-change-transform active:cursor-grabbing motion-reduce:cursor-default",
+            /* No will-change here: this box animates width, height, left and top,
+               none of which a compositor hint helps. The drag wrapper is what
+               transforms, and it advertises that for the length of the gesture. */
+            "cursor-grab touch-none overflow-hidden active:cursor-grabbing motion-reduce:cursor-default",
             "rounded-(--essential-dialog-radius) bg-(--essential-dialog-surface) text-(color:--essential-dialog-foreground) shadow-(--essential-dialog-shadow)",
             /* Fullscreen only changes the box the morph lands in — the CSS
                variables still theme it, and every gesture behaves the same. */
