@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>morph-dialog</title>
+
+  <!-- ===================================================================== -->
+  <!-- Everything between here and the closing comment is the component.     -->
+  <!-- Copy it into your project, or keep this file and import it.           -->
+  <!-- Only dependency: GSAP. Flip and CustomEase are free as of 3.13.       -->
+  <!-- ===================================================================== -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/Flip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/CustomEase.min.js"></script>
+
+  <style>
+    /* ---- morph-dialog: structural styles. Everything visual is a variable. -- */
+    morph-dialog {
+      display: contents;
+    }
+
+    .morph-dialog {
+      position: fixed;
+      inset: 0;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      width: 100vw;
+      max-width: 100vw;
+      height: 100dvh;
+      max-height: 100dvh;
+      background: transparent;
+      overflow: visible;
+      color: inherit;
+    }
+
+    /* the real backdrop is an element: ::backdrop cannot be reached from JS,
+   and its opacity has to track the drag frame by frame */
+    .morph-dialog::backdrop {
+      background: transparent;
+    }
+
+    .morph-dialog__backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      opacity: 0;
+      pointer-events: none;
+      background: var(--morph-backdrop, rgb(0 0 0 / .12));
+    }
+
+    /* carries the drag transform, so the gesture and Flip never write to the
+   same properties on the same element */
+    .morph-dialog__drag {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+    }
+
+    /* the growing box — real width/height, so its radius stays a radius */
+    .morph-dialog__surface {
+      position: relative;
+      z-index: 1;
+      box-sizing: border-box;
+      width: var(--morph-width, min(400px, calc(100vw - 48px)));
+      max-height: var(--morph-max-height, calc(100dvh - 48px));
+      background: var(--morph-surface, Canvas);
+      border-radius: var(--morph-radius, 32px);
+      box-shadow: var(--morph-shadow, 0 0 16px rgb(0 0 0 / .16));
+      overflow: hidden;
+      touch-action: none;
+      cursor: grab;
+      will-change: transform;
+    }
+
+    .morph-dialog__surface:active {
+      cursor: grabbing;
+    }
+
+    /* the content. Stays in normal flow — declaring position:absolute here
+   would collapse the surface's auto height before it can be measured and
+   the dialog would never grow. The controller positions it absolutely
+   only for the duration of the morph. */
+    .morph-dialog__window {
+      display: flex;
+      flex-direction: column;
+      gap: var(--morph-gap, 16px);
+      padding: var(--morph-padding, 16px);
+      overflow: auto;
+      overscroll-behavior: contain;
+      background: var(--morph-surface, Canvas);
+      border-radius: var(--morph-radius, 32px);
+      transform-origin: 50% 50%;
+    }
+
+    /* interactive children own their own gestures */
+    .morph-dialog__window :is(input, textarea, select, button, a, label) {
+      touch-action: auto;
+    }
+
+    /* nothing is selectable while a drag is in flight: the gesture starts on
+   text, so without this the browser paints a highlight across the dialog */
+    body.morph-dragging,
+    body.morph-dragging * {
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .morph-dialog__surface {
+        cursor: default;
+      }
+    }
+
+    /* debug: show the trick. The surface is the box that grows (the button,
+   really) and the window is the miniature riding on top of it. Making the
+   window translucent lets you watch them as two separate things. */
+    morph-dialog[debug] .morph-dialog__surface {
+      outline: 2px dashed #ff3b3b;
+      outline-offset: -2px;
+    }
+
+    morph-dialog[debug] .morph-dialog__window {
+      outline: 2px dashed #3b8cff;
+      outline-offset: -2px;
+      background: color-mix(in srgb, var(--morph-surface, Canvas) 45%, transparent);
+    }
+  </style>
+
+  <script>
+    (() => {
+      'use strict';
+
+      /* Registered lazily, not at parse time. This script can sit in <head>,
+         and Flip's core init needs document.body to exist — registering too
+         early leaves it half-built and every getState throws. */
+      let registered = false;
+      function ensurePlugins() {
+        if (registered) return;
+        gsap.registerPlugin(Flip, CustomEase);
+        registered = true;
+      }
+
+      /* Built on first use, for the same reason. EASE_IN is a quick lunge then
+         a long decelerating settle. EASE_OUT is deliberately NOT its mirror: a
+         mirrored curve idles at full size and then collapses, as unreadable as
+         the front-loaded version is leaving. Even motion is what lets you watch
+         the dialog become a button. */
+      let EASE_IN, EASE_BLUR;
+      const EASE_OUT = 'power2.inOut';
+      function ensureEases() {
+        EASE_IN ||= CustomEase.create('morphIn',
+          'M0,0 C0.305,0.206 0.116,0.567 0.3,0.8 0.394,0.921 0.491,1 1,1');
+        EASE_BLUR ||= CustomEase.create('morphBlur', 'M0,0 C0.56,0.27 0,1 1,1');
+      }
+
+      const INTERACTIVE =
+        'input, textarea, select, button, a, label, [contenteditable], [data-no-drag]';
+
+      const DEFAULTS = {
+        openDuration: .7,
+        /* Shorter on purpose: at equal durations there is a long middle where
+           the box is neither the dialog nor the button. Arriving can take its
+           time; leaving cannot. */
+        closeDuration: .45,
+        dismissDistance: 100,   // px, radial
+        dismissSpeed: .5,       // px per ms, so a flick counts
+        dragFalloff: 415,       // scale = 1 - distance / falloff
+        draggable: true,
+        /* multiplies both directions. 0.15 is slow enough to read every stage;
+           2 makes it snappy. Changing it mid-flight takes effect immediately. */
+        timeScale: 1,
+      };
+
+      class MorphDialog extends HTMLElement {
+        static observedAttributes = ['debug', 'time-scale'];
+
+        /** slow motion: el.timeScale = .15 — or the time-scale attribute */
+        get timeScale() { return this.opts?.timeScale ?? 1; }
+        set timeScale(v) {
+          v = Number(v) || 1;
+          if (this.opts) this.opts.timeScale = v;
+          this._tl?.timeScale(v);
+          this._closeTl?.timeScale(v);
+        }
+
+        /** show the trick: outline both layers and make the miniature see-through */
+        get debug() { return this.hasAttribute('debug'); }
+        set debug(v) { v ? this.setAttribute('debug', '') : this.removeAttribute('debug'); }
+
+        attributeChangedCallback(name, _old, value) {
+          if (name === 'time-scale' && this.opts) this.timeScale = value;
+        }
+
+        connectedCallback() {
+          if (this._ready) return;
+          /* connectedCallback fires when the OPENING tag is parsed, before the
+             children exist. Wait for the parser if the document is still
+             loading; if the element was created later, its children are
+             already there. */
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this._init(), { once: true });
+          } else {
+            this._init();
+          }
+        }
+
+        _init() {
+          if (this._ready) return;
+          this._ready = true;
+          ensurePlugins();
+          ensureEases();
+
+          this.trigger = this.querySelector('[slot="trigger"]');
+          const content = this.querySelector('[slot="content"]');
+          if (!this.trigger || !content) {
+            console.warn('<morph-dialog> needs [slot="trigger"] and [slot="content"]');
+            return;
+          }
+
+          // build the layers around the content the author wrote
+          this.dialog = document.createElement('dialog');
+          this.backdrop = document.createElement('div');
+          this.dragEl = document.createElement('div');
+          this.surface = document.createElement('div');
+          this.window = document.createElement('div');
+
+          this.dialog.className = 'morph-dialog';
+          this.backdrop.className = 'morph-dialog__backdrop';
+          this.dragEl.className = 'morph-dialog__drag';
+          this.surface.className = 'morph-dialog__surface ' + (this.getAttribute('surface-class') || '');
+          this.window.className = 'morph-dialog__window';
+
+          content.removeAttribute('slot');
+          this.window.append(...content.childNodes);
+          content.remove();
+          this.surface.append(this.window);
+          this.dragEl.append(this.surface);
+          this.dialog.append(this.backdrop, this.dragEl);
+          this.append(this.dialog);
+
+          const title = this.window.querySelector('[data-morph-title]');
+          if (title) {
+            title.id = title.id || 'morph-title-' + Math.random().toString(36).slice(2, 8);
+            this.dialog.setAttribute('aria-labelledby', title.id);
+          }
+
+          this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+          this.opts = { ...DEFAULTS };
+          for (const k of Object.keys(DEFAULTS)) {
+            const attr = this.getAttribute(k.replace(/[A-Z]/g, m => '-' + m.toLowerCase()));
+            if (attr !== null) this.opts[k] = attr === 'false' ? false : Number(attr);
+          }
+
+          this.trigger.setAttribute('aria-haspopup', 'dialog');
+          this.trigger.addEventListener('click', () => this.open());
+          this.querySelectorAll('[data-morph-close]').forEach(el =>
+            el.addEventListener('click', () => this.close()));
+
+          this.surface.addEventListener('pointerdown', e => this._down(e));
+          this.surface.addEventListener('pointermove', e => this._move(e));
+          this.surface.addEventListener('pointerup', e => this._up(e));
+          this.surface.addEventListener('pointercancel', e => this._up(e));
+          this.dialog.addEventListener('click', e => {
+            if (e.target === this.dragEl || e.target === this.dialog || e.target === this.backdrop) this.close();
+          });
+          this.dialog.addEventListener('cancel', e => { e.preventDefault(); this.close(); });
+
+          this._closing = false;
+          this._frozen = null;
+          this._tl = null;
+        }
+
+        /* ------------------------------------------------------------- child -- */
+
+        _freezeChild() {
+          /* Measure the SURFACE, not the content's natural size. On a short
+             screen max-height caps the surface below the content's natural
+             height, and a miniature keeping the content's aspect can then never
+             fill that box: coverage tops out below the threshold and the content
+             stays invisible. Freezing to the box it has to end up in makes
+             coverage reach 1 at rest by definition, at any viewport. */
+          const r = this.surface.getBoundingClientRect();
+          this._frozen = { w: r.width, h: r.height };
+          gsap.set(this.window, {
+            width: r.width, height: r.height,
+            minWidth: r.width, minHeight: r.height, maxHeight: r.height,
+            position: 'absolute', left: '50%', top: '50%', xPercent: -50, yPercent: -50,
+          });
+        }
+
+        _thawChild() {
+          gsap.set(this.window, {
+            clearProps:
+              'minWidth,minHeight,maxHeight,width,height,position,left,top,xPercent,yPercent,scale,opacity,filter'
+          });
+        }
+
+        /* Scale the miniature to CONTAIN it in the surface, uniformly. One factor
+           keeps the dialog's proportions at any size; Flip's own scale:true
+           derives scaleX and scaleY separately, stretching the content to fill
+           whatever shape the box currently is — that is the squashing.
+      
+           Opacity comes from the same measurement rather than from the clock.
+           COVERAGE is how much of the surface the miniature fills: 1 only when
+           the two boxes coincide, dropping as the surface's aspect diverges from
+           the dialog's. So the content is present exactly while it fits its
+           container, in both directions, with no timing to tune. */
+        _fitChild() {
+          if (!this._frozen) return;
+          const s = this.surface.getBoundingClientRect();
+          if (!s.width || !s.height) return;
+          const f = this._frozen;
+          const k = Math.min(s.width / f.w, s.height / f.h);
+          const coverage = Math.min((f.w * k) / s.width, (f.h * k) / s.height);
+          gsap.set(this.window, { scale: k, opacity: gsap.utils.clamp(0, 1, (coverage - .8) / .2) });
+        }
+
+        /* -------------------------------------------------------------- open -- */
+
+        _build() {
+          this._tl?.kill();
+          gsap.set([this.surface, this.window, this.backdrop, this.dragEl], { clearProps: 'all' });
+
+          // Flip pairs a recorded element with a target by data-flip-id
+          this.trigger.dataset.flipId = 'morph-dialog';
+          this.surface.dataset.flipId = 'morph-dialog';
+
+          const OPEN = this.reduced ? .001 : this.opts.openDuration;
+          const tCS = getComputedStyle(this.trigger);
+          const sCS = getComputedStyle(this.surface);
+          const surfaceBg = sCS.backgroundColor, surfaceRadius = sCS.borderRadius;
+
+          const originState = Flip.getState(this.trigger);   // geometry only
+
+          /* Pin the surface at its centred position. As a centred grid item its
+             layout left/top depend on its own width, so while the width animates
+             the browser keeps re-centring it and Flip has to compensate for a
+             moving base. Absolutely positioned at the same coordinates, it cannot
+             move underneath the animation. */
+          const d = this.dragEl.getBoundingClientRect();
+          const s = this.surface.getBoundingClientRect();
+          gsap.set(this.surface, {
+            position: 'absolute', margin: 0,
+            left: s.left - d.left, top: s.top - d.top, width: s.width, height: s.height
+          });
+          this._freezeChild();          // only now — the surface has a box of its own
+
+          const tl = gsap.timeline({ paused: true });
+
+          /* PARENT — scale:false, so width and height are real and the radius and
+             border stay crisp. No absolute:true: the surface is a centred item and
+             absolute positioning stacks Flip's left/top on top of the centring
+             offset, landing it at double the coordinates. */
+          tl.add(Flip.from(originState, {
+            targets: this.surface, duration: OPEN,
+            ease: EASE_IN, scale: false
+          }), 0);
+
+          /* Colour and radius are NOT Flip props. Spread across the full duration
+             the box stays visibly the trigger's colour past halfway and reads as a
+             growing button rather than an arriving dialog. They hand over in
+             ~125ms; only the geometry takes the full duration. */
+          gsap.set(this.surface, { backgroundColor: tCS.backgroundColor, borderRadius: tCS.borderRadius });
+          tl.to(this.surface, {
+            backgroundColor: surfaceBg, borderRadius: surfaceRadius,
+            duration: OPEN * .18, ease: 'power2.out'
+          }, OPEN * .02);
+
+          tl.eventCallback('onUpdate', () => this._fitChild());
+          tl.fromTo(this.window, { filter: 'blur(8px)' },
+            { filter: 'blur(0px)', duration: .5, ease: EASE_BLUR }, 0);
+          tl.fromTo(this.backdrop, { opacity: 0 }, { opacity: 1, duration: .12, ease: 'none' }, 0);
+
+          this._tl = tl.progress(1).progress(0);    // lock in both ends
+          this._tl.timeScale(this.opts.timeScale);
+        }
+
+        open() {
+          if (this.dialog.open) return;
+          document.body.style.overflow = 'hidden';   // showModal does not lock scroll
+          this.dialog.showModal();
+          this._build();
+          this._tl.play();
+          this.dispatchEvent(new CustomEvent('morph-open'));
+        }
+
+        /* ------------------------------------------------------------- close -- */
+
+        /* Fold whatever the drag put on the wrapper into the surface's own box,
+           then clear the wrapper. Nothing moves, but from here the dialog owns its
+           position — so the close starts from where the person let go instead of
+           unwinding to centre first. */
+        _bakeDrag() {
+          const s = this.surface.getBoundingClientRect();
+          gsap.set(this.dragEl, { clearProps: 'transform,transformOrigin' });
+          const d = this.dragEl.getBoundingClientRect();
+          gsap.set(this.surface, {
+            left: s.left - d.left, top: s.top - d.top,
+            width: s.width, height: s.height, x: 0, y: 0, scale: 1
+          });
+        }
+
+        close() {
+          if (this._closing || !this.dialog.open) return;
+          this._closing = true;
+          this._tl?.pause();
+          this._bakeDrag();
+
+          const D = this.reduced ? .001 : this.opts.closeDuration;
+          const tCS = getComputedStyle(this.trigger);
+
+          const home = () => {
+            document.body.classList.remove('morph-dragging');
+            this._thawChild();
+            gsap.set([this.surface, this.window, this.backdrop, this.dragEl], { clearProps: 'all' });
+            this.dialog.close();
+            document.body.style.overflow = '';
+            this.trigger.focus({ preventScroll: true });
+            this._closing = false;
+            this.dispatchEvent(new CustomEvent('morph-close'));
+          };
+
+          const tl = gsap.timeline({ onComplete: home });
+          tl.timeScale(this.opts.timeScale);
+          this._closeTl = tl;
+
+          /* Flip.to is the exact mirror of the Flip.from that opened it: same
+             plugin, same pairing, same scale:false. Flip.fit solves the same
+             problem a different way and lands the box at the right SIZE but the
+             wrong POSITION. */
+          tl.add(Flip.to(Flip.getState(this.trigger),
+            { targets: this.surface, duration: D, ease: EASE_OUT, scale: false }), 0);
+          tl.to(this.surface, {
+            backgroundColor: tCS.backgroundColor, borderRadius: tCS.borderRadius,
+            duration: D * .42, ease: 'power1.in'
+          }, D * .58);
+          tl.eventCallback('onUpdate', () => this._fitChild());
+          tl.to(this.backdrop, { opacity: 0, duration: .25, ease: 'power1.in' }, D * .6);
+        }
+
+        /* -------------------------------------------------------------- drag -- */
+
+        _down(e) {
+          if (!this.opts.draggable || this.reduced || this._closing) return;
+          if (this._tl && this._tl.progress() < 1) return;
+          // anything a person can type in, press or select owns the gesture
+          if (e.target.closest(INTERACTIVE)) return;
+
+          const r = this.dragEl.getBoundingClientRect();
+          // origin = the grab point, so it stays under the cursor while shrinking
+          gsap.set(this.dragEl, { transformOrigin: `${e.clientX - r.left}px ${e.clientY - r.top}px` });
+          e.preventDefault();                       // stop a text selection starting
+          document.body.classList.add('morph-dragging');
+          document.getSelection()?.removeAllRanges();
+
+          this._drag = {
+            on: true, sx: e.clientX, sy: e.clientY, lx: e.clientX, ly: e.clientY,
+            lt: e.timeStamp, dx: 0, dy: 0, vx: 0, vy: 0
+          };
+          this.surface.setPointerCapture(e.pointerId);
+          gsap.killTweensOf(this.dragEl);
+        }
+
+        _move(e) {
+          const d = this._drag;
+          if (!d?.on) return;
+          d.dx = e.clientX - d.sx;
+          d.dy = e.clientY - d.sy;
+          const dt = e.timeStamp - d.lt;
+          if (dt > 0) { d.vx = (e.clientX - d.lx) / dt; d.vy = (e.clientY - d.ly) / dt; }
+          d.lx = e.clientX; d.ly = e.clientY; d.lt = e.timeStamp;
+          // free in every direction; scale falls off with radial distance
+          gsap.set(this.dragEl, {
+            x: d.dx, y: d.dy,
+            scale: Math.max(1 - Math.hypot(d.dx, d.dy) / this.opts.dragFalloff, .3)
+          });
+        }
+
+        _up(e) {
+          const d = this._drag;
+          if (!d?.on) return;
+          d.on = false;
+          document.body.classList.remove('morph-dragging');
+          try { this.surface.releasePointerCapture(e.pointerId); } catch { }
+          const dist = Math.hypot(d.dx, d.dy), speed = Math.hypot(d.vx, d.vy);
+          if (dist > this.opts.dismissDistance || (speed > this.opts.dismissSpeed && dist > 20))
+            return this.close();
+          gsap.to(this.dragEl, {
+            x: 0, y: 0, scale: 1, duration: .5, ease: 'expo.out',
+            onComplete: () => gsap.set(this.dragEl, { transformOrigin: '50% 50%' })
+          });
+        }
+      }
+
+      customElements.define('morph-dialog', MorphDialog);
+    })();
+  </script>
+  <!-- ===================== end of the component ========================== -->
+
+
+  <!-- ------------------------------- demo -------------------------------- -->
+  <style>
+    :root {
+      --page: #0c130d;
+      --surface: #141313;
+      --hairline: #1e2820;
+      --group: #121913;
+      --field: #141c15;
+      --green: #09ee61;
+      --on-green: #04240f;
+      --ink: #e7ece6;
+      --ink-2: #9aa89b;
+      --ink-3: #5f6b60;
+
+      /* the component's knobs */
+      --morph-surface: #141313;
+      --morph-radius: 40px;
+      --morph-width: min(400px, calc(100vw - 48px));
+      --morph-backdrop: rgb(0 0 0 / .12);
+      --morph-shadow: 0 0 16px #00000029;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box
+    }
+
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      background: var(--page);
+      color: var(--ink);
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      display: grid;
+      place-items: center;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--green);
+      outline-offset: 3px
+    }
+
+    .group {
+      display: inline-flex;
+      gap: .5rem;
+      align-items: center;
+      background: var(--group);
+      border-radius: 40px;
+      padding: .75rem
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 47px;
+      padding: 0 24px;
+      border: 0;
+      /* HALF THE HEIGHT, never 999px: border-radius clamps to half the shorter
+     side, so a pill radius renders as a circle at every intermediate size
+     on the way up to the dialog. */
+      border-radius: 23.5px;
+      font: inherit;
+      font-size: .875rem;
+      font-weight: 500;
+      cursor: pointer;
+      background: var(--green);
+      color: var(--on-green);
+    }
+
+    .btn.secondary {
+      background: #1b231c;
+      color: var(--ink-2)
+    }
+
+    .head {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      background: #0f0e0e;
+      border-radius: 24px;
+      padding: 8px
+    }
+
+    .close-x {
+      width: 36px;
+      height: 36px;
+      border-radius: 999px;
+      border: 0;
+      background: #1b231c;
+      color: var(--ink-2);
+      cursor: pointer;
+      font-size: .8rem;
+      align-self: flex-start
+    }
+
+    .title {
+      font-size: 2rem;
+      font-weight: 600;
+      line-height: 1;
+      padding: 16px;
+      margin: 0
+    }
+
+    .field {
+      border: 1px solid var(--hairline);
+      background: var(--field);
+      border-radius: 14px;
+      padding: .85rem 1rem;
+      font: inherit;
+      font-size: .8rem;
+      color: var(--ink);
+      width: 100%
+    }
+
+    .field::placeholder {
+      color: var(--ink-3)
+    }
+
+    .row {
+      display: flex;
+      gap: 8px
+    }
+
+    .row>* {
+      flex: 1
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: auto
+    }
+
+    .actions button {
+      flex: 1;
+      height: 47px;
+      border: 0;
+      border-radius: 999px;
+      font: inherit;
+      font-size: .875rem;
+      font-weight: 500;
+      cursor: pointer
+    }
+
+    .actions .ghost {
+      background: #1b231c;
+      color: var(--ink-2)
+    }
+
+    .actions .go {
+      background: var(--green);
+      color: var(--on-green)
+    }
+
+    .tools {
+      position: fixed;
+      bottom: 1rem;
+      left: 50%;
+      translate: -50% 0;
+      display: flex;
+      gap: 1.25rem;
+      font-size: .8rem;
+      color: var(--ink-3);
+      z-index: 5
+    }
+
+    .tools label {
+      display: inline-flex;
+      gap: .4rem;
+      align-items: center;
+      cursor: pointer
+    }
+  </style>
+
+<body>
+
+  <morph-dialog>
+    <div class="group">
+      <button slot="trigger" class="btn">Crear movimiento</button>
+      <button class="btn secondary">Filtros</button>
+    </div>
+
+    <div slot="content">
+      <div class="head">
+        <button class="close-x" data-morph-close aria-label="Cerrar">✕</button>
+        <h2 class="title" data-morph-title>Crear movimiento</h2>
+      </div>
+      <input class="field" placeholder="Descripción">
+      <div class="row">
+        <input class="field" placeholder="Monto" inputmode="decimal">
+        <input class="field" placeholder="Divisa">
+      </div>
+      <input class="field" placeholder="Sin categoría">
+      <input class="field" placeholder="Sin cuenta">
+      <div class="row">
+        <input class="field" placeholder="18 Ago 26">
+        <input class="field" placeholder="11:52 PM">
+      </div>
+      <div class="actions">
+        <button class="ghost" data-morph-close>✕</button>
+        <button class="go">Crear</button>
+      </div>
+    </div>
+  </morph-dialog>
+
+  <div class="tools">
+    <label><input type="checkbox" id="slow"> Slow motion</label>
+    <label><input type="checkbox" id="trick"> Show the trick</label>
+  </div>
+
+  <script>
+    const dlg = document.querySelector('morph-dialog');
+    slow.addEventListener('change', e => dlg.timeScale = e.target.checked ? .15 : 1);
+    trick.addEventListener('change', e => dlg.debug = e.target.checked);
+  </script>
+
+</body>
+
+</html>

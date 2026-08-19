@@ -1,36 +1,208 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# essential-dialog
 
-## Getting Started
+A native `<dialog>` that grows out of its own trigger and shrinks back into it.
+Built on GSAP Flip, distributed as a [shadcn registry](https://ui.shadcn.com/docs/registry) item.
 
-First, run the development server:
+The API mirrors shadcn/ui's `Dialog` — `Trigger`, `Content`, `Header`, `Title`,
+`Description`, `Footer`, `Close`, and `render` for composition — so it drops into
+an existing call site. Nothing inside the component imports from
+`components/ui`: your children are the only opinion about how it looks.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npx shadcn@latest registry add @essential=https://essential-dialog.vercel.app/r/{name}.json
+npx shadcn@latest add @essential/essential-dialog
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Or straight from a URL, no namespace:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npx shadcn@latest add https://essential-dialog.vercel.app/r/essential-dialog.json
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Two files land in your project — `components/ui/essential-dialog.tsx` and
+`hooks/use-morph-dialog.ts` — plus the CSS variables in your stylesheet and
+`gsap` in your dependencies. GSAP is the only runtime dependency; Flip and
+CustomEase have been free since 3.13.
 
-## Learn More
+## Usage
 
-To learn more about Next.js, take a look at the following resources:
+The shadcn `Dialog` demo, with `Dialog` swapped for `EssentialDialog` and
+nothing else changed:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```tsx
+import { Button } from "@/components/ui/button"
+import { Field, FieldGroup } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  EssentialDialog,
+  EssentialDialogClose,
+  EssentialDialogContent,
+  EssentialDialogDescription,
+  EssentialDialogFooter,
+  EssentialDialogHeader,
+  EssentialDialogTitle,
+  EssentialDialogTrigger,
+} from "@/components/ui/essential-dialog"
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+export function Demo() {
+  return (
+    <EssentialDialog>
+      <EssentialDialogTrigger render={<Button variant="outline">Open</Button>} />
+      <EssentialDialogContent>
+        <EssentialDialogHeader>
+          <EssentialDialogTitle>Edit profile</EssentialDialogTitle>
+          <EssentialDialogDescription>
+            Make changes to your profile here.
+          </EssentialDialogDescription>
+        </EssentialDialogHeader>
+        <FieldGroup>
+          <Field>
+            <Label htmlFor="name">Name</Label>
+            <Input id="name" defaultValue="Pedro Duarte" />
+          </Field>
+        </FieldGroup>
+        <EssentialDialogFooter>
+          <EssentialDialogClose render={<Button variant="outline">Cancel</Button>} />
+          <Button type="submit">Save changes</Button>
+        </EssentialDialogFooter>
+      </EssentialDialogContent>
+    </EssentialDialog>
+  )
+}
+```
 
-## Deploy on Vercel
+### Props
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+On `<EssentialDialog>`:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Prop              | Default | Notes                                                                       |
+| ----------------- | ------- | --------------------------------------------------------------------------- |
+| `openDuration`    | `0.7`   | Seconds. The trigger → dialog morph.                                        |
+| `closeDuration`   | `0.45`  | Shorter on purpose — see below.                                             |
+| `draggable`       | `true`  | Drag-to-dismiss. Always off under `prefers-reduced-motion`.                 |
+| `dismissDistance` | `100`   | Radial px before release dismisses.                                         |
+| `dismissSpeed`    | `0.5`   | px/ms, so a flick counts even when it barely moves.                         |
+| `dragFalloff`     | `415`   | `scale = 1 - distance / dragFalloff`, floored at `.3`.                       |
+| `open`            | —       | Controlled. Drives `showModal()`/`close()` rather than rendering two trees. |
+| `defaultOpen`     | `false` | Open on mount.                                                              |
+| `onOpenChange`    | —       | Fires when the morph has fully finished in either direction.                 |
+| `debug`           | `false` | Outlines every layer and logs what the morph measured. See below.            |
+
+On `<EssentialDialogContent>`: `className` styles the morphing surface,
+`windowClassName` the scrolling box inside it, `backdropClassName` the backdrop,
+and `showCloseButton` (default `true`) toggles the corner ✕.
+
+### Debugging
+
+`<EssentialDialog debug>` — the counterpart to `<morph-dialog debug>` — outlines
+each layer and logs, to the console, every number the morph is built from:
+
+```
+[essential-dialog] open      { from: {w,h,x,y,radius,background}, to: {…}, frozenContent, duration }
+[essential-dialog] fit       { surface: 222×69, frozen: 400×144, scale: 0.48, coverage: 0.866, opacity: 0.33 }
+[essential-dialog] drag end  { distance: 172, speed: 0.87, thresholds: {…}, dismissed: true }
+[essential-dialog] close     { from: {…}, to: {…}, duration }
+```
+
+The outlines say which box is which: blue is the backdrop, amber the drag
+wrapper, **magenta the surface** (the box Flip animates), green the window (what
+gets scaled and faded inside it). If the content ever looks squashed or arrives
+late, the `fit` line is where to look — `coverage` should reach 1 exactly when
+the surface and the frozen content box coincide.
+
+### Theming
+
+Every visual value is a CSS variable, installed into your stylesheet by the CLI:
+
+| Variable                                | Default                             |
+| --------------------------------------- | ----------------------------------- |
+| `--essential-dialog-width`              | `min(400px, calc(100vw - 48px))`    |
+| `--essential-dialog-max-height`         | `calc(100dvh - 48px)`               |
+| `--essential-dialog-radius`             | `32px`                              |
+| `--essential-dialog-gap`                | `16px`                              |
+| `--essential-dialog-padding`            | `16px`                              |
+| `--essential-dialog-surface`            | `var(--popover, Canvas)`            |
+| `--essential-dialog-foreground`         | `var(--popover-foreground, ...)`    |
+| `--essential-dialog-muted-foreground`   | `var(--muted-foreground, GrayText)` |
+| `--essential-dialog-backdrop`           | `rgb(0 0 0 / 0.12)`                 |
+| `--essential-dialog-shadow`             | `0 0 16px rgb(0 0 0 / 0.16)`        |
+
+Set them on any ancestor to theme one dialog instead of all of them. Size the
+dialog through `--essential-dialog-width` rather than a `max-w-*` class: the
+surface's width is animated inline, and a max-width would clamp the morph.
+
+### Composition and `render`
+
+A `render` element is wrapped in a `display: contents` span, which has no box of
+its own and so changes nothing about layout. That is what makes `render` work
+from a Server Component: elements created on the server cross the RSC boundary as
+lazy references whose props cannot be read, so they cannot be cloned. When the
+element *is* clonable it still gets cloned — the slot attributes and the trigger
+ref land on your real button — but the DOM structure is the same either way, so
+server and client never disagree during hydration.
+
+## How the animation works
+
+The trigger is the origin, so it has to be a real DOM node — that is what
+`render={<Button />}` is for. A few decisions are load-bearing:
+
+- **The surface animates real `width`/`height`, not `scale`** (`scale: false` in
+  both Flip calls), so its radius stays a radius and its border stays crisp.
+- **A pill trigger needs `border-radius: 50%` of its height, never `999px`.** A
+  radius clamps to half the shorter side, so `999px` renders as a circle at every
+  intermediate size on the way up.
+- **Colour and radius hand over in ~18% of the duration**, not across all of it.
+  Spread over the full morph, the box reads as a growing button rather than an
+  arriving dialog.
+- **The content's opacity comes from measurement, not the clock.** Coverage — how
+  much of the surface the miniature fills — reaches 1 only when the two boxes
+  coincide, so the content is present exactly while it fits its container, in
+  both directions, with no timing to tune.
+- **Closing is not the mirror of opening.** A mirrored ease idles at full size
+  then collapses; even motion (`power2.inOut`, and a shorter duration) is what
+  lets you watch the dialog become a button again.
+- **The drag lives on its own wrapper**, so the gesture and Flip never write to
+  the same properties on the same element. On release the wrapper's transform is
+  baked into the surface's own box, so the close morph starts from where you let
+  go instead of unwinding to centre first.
+- **The backdrop is an element, not `::backdrop`**, which JS cannot reach and
+  whose opacity has to track the drag frame by frame.
+
+Under `prefers-reduced-motion: reduce` the whole timeline collapses to 1ms and
+the gesture is disabled.
+
+## Registry development
+
+```bash
+npm install
+npm run dev              # demo at http://localhost:3000
+npm run registry:build   # regenerate public/r/*.json from registry.json
+npm run typecheck && npm run lint
+```
+
+Source of truth is `registry.json`; items live in `registry/`. The built JSON in
+`public/r/` is what consumers install, so rebuild it before committing changes to
+a component.
+
+## Provenance
+
+`reference/morph-dialog.reference.html` is the original single-file vanilla web
+component this was ported from — kept for provenance, not shipped. The timeline
+is a faithful port: same eases (`morphIn` CustomEase in, `power2.inOut` out), same
+`scale: false` Flip pairing, same colour/radius hand-over at 18% and 42% of the
+respective durations, same coverage-driven opacity, same drag thresholds and
+`expo.out` snap-back.
+
+It differs from the original in five places, all deliberate:
+
+- `onOpenChange` replaces the `morph-open` / `morph-close` DOM events.
+- The Flip id is per instance, not the constant `morph-dialog`, so two dialogs on
+  one page can never claim each other's origin.
+- The blur-in is clamped to `openDuration` instead of a fixed `0.5s`, so a short
+  `openDuration` does not finish with the content still blurred.
+- `aria-describedby` is wired from `EssentialDialogDescription`; the original only
+  wired the title.
+- Opening without a trigger in the tree (`defaultOpen`, or a controlled `open`
+  with no `EssentialDialogTrigger`) falls back to a scale-and-fade, since there is
+  no origin geometry to morph from.

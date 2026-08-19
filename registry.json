@@ -1,0 +1,58 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "essential",
+  "homepage": "https://github.com/anthonycifuentes/essential-dialog",
+  "items": [
+    {
+      "name": "essential-dialog",
+      "type": "registry:ui",
+      "title": "Essential Dialog",
+      "description": "A native <dialog> that morphs out of its own trigger and back into it, driven by GSAP Flip. Drop-in API parity with shadcn/ui Dialog: Trigger, Content, Header, Title, Description, Footer, Close and `render` composition. Drag it anywhere to dismiss. Every visual value is a CSS variable and nothing inside imports from components/ui, so the content stays entirely yours.",
+      "author": "Anthony Cifuentes",
+      "dependencies": ["gsap"],
+      "files": [
+        {
+          "path": "registry/essential-dialog/components/essential-dialog.tsx",
+          "type": "registry:ui"
+        },
+        {
+          "path": "registry/essential-dialog/hooks/use-morph-dialog.ts",
+          "type": "registry:hook"
+        }
+      ],
+      "cssVars": {
+        "light": {
+          "essential-dialog-width": "min(400px, calc(100vw - 48px))",
+          "essential-dialog-max-height": "calc(100dvh - 48px)",
+          "essential-dialog-radius": "32px",
+          "essential-dialog-gap": "16px",
+          "essential-dialog-padding": "16px",
+          "essential-dialog-surface": "var(--popover, Canvas)",
+          "essential-dialog-foreground": "var(--popover-foreground, CanvasText)",
+          "essential-dialog-muted-foreground": "var(--muted-foreground, GrayText)",
+          "essential-dialog-backdrop": "rgb(0 0 0 / 0.12)",
+          "essential-dialog-shadow": "0 0 16px rgb(0 0 0 / 0.16)"
+        },
+        "dark": {
+          "essential-dialog-backdrop": "rgb(0 0 0 / 0.4)",
+          "essential-dialog-shadow": "0 0 24px rgb(0 0 0 / 0.45)"
+        }
+      },
+      "docs": "Trigger geometry is the origin of the animation, so the trigger must be a real DOM node — compose it with `render={<Button />}`. Size the dialog through --essential-dialog-width rather than a max-w-* class: the surface's width is animated inline and a max-width would clamp the morph. Pass `debug` to outline every layer and log the boxes, coverage and drag thresholds the morph is built from."
+    },
+    {
+      "name": "essential-dialog-demo",
+      "type": "registry:block",
+      "title": "Essential Dialog Demo",
+      "description": "The shadcn/ui Dialog demo, swapped over to essential-dialog: same Button, Field, Input and Label children, morphing entry and exit.",
+      "author": "Anthony Cifuentes",
+      "registryDependencies": ["essential-dialog", "button", "field", "input", "label"],
+      "files": [
+        {
+          "path": "registry/essential-dialog-demo/components/essential-dialog-demo.tsx",
+          "type": "registry:component"
+        }
+      ]
+    }
+  ]
+}
