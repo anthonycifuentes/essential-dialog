@@ -37,7 +37,7 @@ export function CodeBlock({
         <button
           type="button"
           onClick={copy}
-          className="rounded-md px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="relative rounded-md px-2 py-1 font-mono text-[11px] text-muted-foreground transition-[transform,background-color,color] hover:bg-muted hover:text-foreground active:scale-[0.96] after:absolute after:-inset-y-2.5 after:-inset-x-1 after:content-['']"
         >
           {copied ? "copied" : "copy"}
         </button>

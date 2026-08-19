@@ -107,7 +107,7 @@ export default function Home() {
 
       <Section
         title="Fullscreen"
-        description="Opt into an edge-to-edge dialog: `fullscreen` for always, a number for a breakpoint — fullscreen while the viewport is narrower than that many px — or any media query string. Off by default. It only changes the box the morph lands in: the surface fills the viewport, drops its radius, adds the safe-area insets, and the content scrolls inside it. Because the resting dialog is laid out by CSS, crossing the breakpoint while it is open just re-lays it out."
+        description="Opt into an edge-to-edge dialog: fullscreen for always, a number for a breakpoint — fullscreen while the viewport is narrower than that many px — or any media query string. Off by default. It only changes the box the morph lands in: the surface fills the viewport, drops its radius, adds the safe-area insets, and the content scrolls inside it. Because the resting dialog is laid out by CSS, crossing the breakpoint while it is open just re-lays it out."
       >
         <Panel className="min-h-[420px]">
           <FullscreenDemo />

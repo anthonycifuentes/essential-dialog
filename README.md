@@ -147,7 +147,7 @@ Every visual value is a CSS variable, installed into your stylesheet by the CLI:
 | --------------------------------------- | ----------------------------------- |
 | `--essential-dialog-width`              | `min(400px, calc(100vw - 48px))`    |
 | `--essential-dialog-max-height`         | `calc(100dvh - 48px)`               |
-| `--essential-dialog-radius`             | `32px`                              |
+| `--essential-dialog-radius`             | `calc(var(--radius) + padding)`      |
 | `--essential-dialog-gap`                | `16px`                              |
 | `--essential-dialog-padding`            | `16px`                              |
 | `--essential-dialog-surface`            | `var(--popover, Canvas)`            |

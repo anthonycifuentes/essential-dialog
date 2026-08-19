@@ -121,7 +121,9 @@
 :root {
   --essential-dialog-width: min(400px, calc(100vw - 48px));
   --essential-dialog-max-height: calc(100dvh - 48px);
-  --essential-dialog-radius: 32px;
+  /* Concentric by construction: the consumer's own control radius plus our
+     padding, so nested inputs and buttons never look pinched. */
+  --essential-dialog-radius: calc(var(--radius, 0.625rem) + var(--essential-dialog-padding, 16px));
   --essential-dialog-gap: 16px;
   --essential-dialog-padding: 16px;
   --essential-dialog-surface: var(--popover, Canvas);

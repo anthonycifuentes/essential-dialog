@@ -10,13 +10,13 @@ export function ThemeToggle() {
       type="button"
       onClick={() => document.documentElement.classList.toggle("dark")}
       aria-label="Toggle theme"
-      className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className="relative inline-flex size-8 shrink-0 items-center justify-center rounded-lg border text-muted-foreground transition-[transform,background-color,color] hover:bg-muted hover:text-foreground active:scale-[0.96] after:absolute after:-inset-1.5 after:content-['']"
     >
       <svg
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.6"
+        strokeWidth="2"
         strokeLinecap="round"
         className="size-4 dark:hidden"
         aria-hidden="true"
@@ -27,7 +27,7 @@ export function ThemeToggle() {
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.6"
+        strokeWidth="2"
         strokeLinecap="round"
         className="hidden size-4 dark:block"
         aria-hidden="true"

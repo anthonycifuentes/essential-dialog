@@ -1,6 +1,6 @@
 "use client"
 
-import { PlusIcon } from "lucide-react"
+import { PlusIcon, XIcon } from "lucide-react"
 
 import {
   EssentialDialog,
@@ -52,7 +52,7 @@ function TransactionDialog({
           aria-label="New transaction"
           className="inline-flex size-[47px] items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:text-foreground"
         >
-          <PlusIcon className="size-5" strokeWidth={1.75} />
+          <PlusIcon className="size-5" strokeWidth={2} />
         </EssentialDialogTrigger>
       )}
 
@@ -60,9 +60,9 @@ function TransactionDialog({
         <EssentialDialogHeader className="rounded-2xl bg-muted/50 p-2">
           <EssentialDialogClose
             aria-label="Close"
-            className="inline-flex size-9 items-center justify-center self-start rounded-full bg-muted text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className="relative inline-flex size-9 items-center justify-center self-start rounded-full bg-muted text-muted-foreground transition-[transform,color] hover:text-foreground active:scale-[0.96] after:absolute after:-inset-1 after:content-['']"
           >
-            ✕
+            <XIcon className="size-4" strokeWidth={2} />
           </EssentialDialogClose>
           <EssentialDialogTitle className="p-3 text-3xl leading-none font-semibold">
             New transaction
@@ -80,10 +80,13 @@ function TransactionDialog({
           <ThemedInput placeholder="11:52 PM" />
         </div>
         <EssentialDialogFooter className="flex-row gap-2 *:h-[47px] *:flex-1 *:rounded-full *:text-sm *:font-medium">
-          <EssentialDialogClose className="bg-muted text-muted-foreground transition-colors hover:text-foreground">
+          <EssentialDialogClose className="bg-muted text-muted-foreground transition-[transform,color] hover:text-foreground active:scale-[0.96]">
             Cancel
           </EssentialDialogClose>
-          <button type="button" className="bg-foreground text-background">
+          <button
+            type="button"
+            className="bg-foreground text-background transition-transform active:scale-[0.96]"
+          >
             Create
           </button>
         </EssentialDialogFooter>
@@ -103,7 +106,8 @@ export function NewTransactionDialog(morph: MorphProps) {
       className="flex items-center gap-2 rounded-full border bg-muted/40 p-2"
       style={
         {
-          "--essential-dialog-radius": "28px",
+          /* Concentric with the 18px header card inside it: 18 + 20 padding. */
+          "--essential-dialog-radius": "38px",
           "--essential-dialog-width": "min(440px, calc(100vw - 48px))",
           "--essential-dialog-padding": "20px",
           "--essential-dialog-gap": "12px",

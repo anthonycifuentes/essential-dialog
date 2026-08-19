@@ -31,7 +31,7 @@ function Control({
     <label className="flex flex-col gap-2">
       <span className="flex items-baseline justify-between gap-4 font-mono text-xs text-muted-foreground">
         {label}
-        <span className="text-foreground">{value.toFixed(2)}s</span>
+        <span className="text-foreground tabular-nums">{value.toFixed(2)}s</span>
       </span>
       <Slider
         value={[value]}
@@ -88,7 +88,7 @@ export function DebugDemo() {
           <button
             type="button"
             onClick={() => setDraggable((value) => !value)}
-            className="rounded-lg border px-2.5 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="inline-flex min-h-10 items-center rounded-lg border px-3 font-mono text-[11px] text-muted-foreground transition-[transform,background-color,color] hover:bg-muted hover:text-foreground active:scale-[0.96]"
           >
             draggable: {String(draggable)}
           </button>
