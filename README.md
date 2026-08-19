@@ -134,6 +134,9 @@ surface's width is animated inline, and a max-width would clamp the morph.
 
 ### Composition and `render`
 
+Children passed to the part win over the render element's own, so both
+`render={<Button>Open</Button>}` and `render={<Button />}>Open</…>` work.
+
 A `render` element is wrapped in a `display: contents` span, which has no box of
 its own and so changes nothing about layout. That is what makes `render` work
 from a Server Component: elements created on the server cross the RSC boundary as

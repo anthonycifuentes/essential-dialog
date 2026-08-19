@@ -168,7 +168,8 @@ function withRender(
   render: React.ReactElement,
   ours: Record<string, unknown>,
   className?: string,
-  attach?: (el: never | null) => void
+  attach?: (el: never | null) => void,
+  children?: React.ReactNode
 ) {
   const theirs = render.props as Record<string, unknown> & {
     ref?: React.Ref<never>
@@ -177,6 +178,9 @@ function withRender(
   const merged: Record<string, unknown> = { ...ours }
 
   if (attach) merged.ref = mergeRefs(theirs.ref, attach)
+  /* Children passed to the part rather than to the render element win, so both
+     `render={<Button>Open</Button>}` and `render={<Button />}>Open<` work. */
+  if (children !== undefined) merged.children = children
 
   for (const key of Object.keys(ours)) {
     const mine = ours[key]
@@ -253,7 +257,7 @@ function EssentialDialogTrigger({
           ? /* eslint-disable-next-line react-hooks/refs -- triggerRef is a
                callback ref, forwarded straight into cloneElement. No ref value
                is read here. */
-            withRender(render, attrs, className, triggerRef as never)
+            withRender(render, attrs, className, triggerRef as never, children)
           : render}
       </span>
     )
@@ -301,7 +305,7 @@ function EssentialDialogClose({
     return (
       <span className="contents" onClick={closeOnClick}>
         {React.isValidElement(render)
-          ? withRender(render, attrs, className)
+          ? withRender(render, attrs, className, undefined, children)
           : render}
       </span>
     )
