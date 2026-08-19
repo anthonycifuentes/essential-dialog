@@ -147,7 +147,7 @@ Every visual value is a CSS variable, installed into your stylesheet by the CLI:
 | --------------------------------------- | ----------------------------------- |
 | `--essential-dialog-width`              | `min(400px, calc(100vw - 48px))`    |
 | `--essential-dialog-max-height`         | `calc(100dvh - 48px)`               |
-| `--essential-dialog-radius`             | `calc(var(--radius) + padding)`      |
+| `--essential-dialog-radius`             | `26px`                              |
 | `--essential-dialog-gap`                | `16px`                              |
 | `--essential-dialog-padding`            | `16px`                              |
 | `--essential-dialog-surface`            | `var(--popover, Canvas)`            |
@@ -155,6 +155,16 @@ Every visual value is a CSS variable, installed into your stylesheet by the CLI:
 | `--essential-dialog-muted-foreground`   | `var(--muted-foreground, GrayText)` |
 | `--essential-dialog-backdrop`           | `rgb(0 0 0 / 0.12)`                 |
 | `--essential-dialog-shadow`             | `0 0 16px rgb(0 0 0 / 0.16)`        |
+
+The radius default is not arbitrary: `26px` is a 10px control radius plus 16px of
+padding, so shadcn's own inputs and buttons sit concentrically inside it — nested
+radii that disagree are the most common reason a dialog feels slightly off. If you
+re-theme `--radius` or change the padding, this one-liner keeps that relationship
+true instead of pinning a number:
+
+```css
+--essential-dialog-radius: calc(var(--radius) + var(--essential-dialog-padding));
+```
 
 Set them on any ancestor to theme one dialog instead of all of them. Size the
 dialog through `--essential-dialog-width` rather than a `max-w-*` class: the

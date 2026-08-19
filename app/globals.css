@@ -121,9 +121,10 @@
 :root {
   --essential-dialog-width: min(400px, calc(100vw - 48px));
   --essential-dialog-max-height: calc(100dvh - 48px);
-  /* Concentric by construction: the consumer's own control radius plus our
-     padding, so nested inputs and buttons never look pinched. */
-  --essential-dialog-radius: calc(var(--radius, 0.625rem) + var(--essential-dialog-padding, 16px));
+  /* 26px = a 10px control radius + 16px of padding, so shadcn's own inputs and
+     buttons sit concentrically inside it. Re-theming --radius or the padding?
+     calc(var(--radius) + var(--essential-dialog-padding)) keeps that true. */
+  --essential-dialog-radius: 26px;
   --essential-dialog-gap: 16px;
   --essential-dialog-padding: 16px;
   --essential-dialog-surface: var(--popover, Canvas);
