@@ -19,7 +19,22 @@ function ThemedInput(props: React.ComponentProps<"input">) {
   )
 }
 
-export function ThemedDemo() {
+/**
+ * One themed dialog, used twice on the page: plain in the theming section, and
+ * with `debug` plus the duration sliders in the debug section. Same component,
+ * same content — only the props differ.
+ */
+export function NewTransactionDialog({
+  debug,
+  openDuration,
+  closeDuration,
+  draggable,
+}: {
+  debug?: boolean
+  openDuration?: number
+  closeDuration?: number
+  draggable?: boolean
+}) {
   return (
     <div
       className="flex items-center gap-2 rounded-full border bg-muted/40 p-2"
@@ -33,7 +48,12 @@ export function ThemedDemo() {
         } as React.CSSProperties
       }
     >
-      <EssentialDialog>
+      <EssentialDialog
+        debug={debug}
+        openDuration={openDuration}
+        closeDuration={closeDuration}
+        draggable={draggable}
+      >
         {/* Half the height, never 999px: a radius clamps to half the shorter
             side, so a pill radius renders as a circle at every intermediate
             size on the way up to the dialog. */}

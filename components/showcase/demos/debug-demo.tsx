@@ -2,18 +2,8 @@
 
 import * as React from "react"
 
-import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
-import {
-  EssentialDialog,
-  EssentialDialogClose,
-  EssentialDialogContent,
-  EssentialDialogDescription,
-  EssentialDialogFooter,
-  EssentialDialogHeader,
-  EssentialDialogTitle,
-  EssentialDialogTrigger,
-} from "@/registry/essential-dialog/components/essential-dialog"
+import { NewTransactionDialog } from "@/components/showcase/demos/new-transaction-dialog"
 
 const LAYERS = [
   { label: "backdrop", swatch: "bg-sky-400/70" },
@@ -39,7 +29,7 @@ function Control({
 }) {
   return (
     <label className="flex flex-col gap-2">
-      <span className="flex items-baseline justify-between font-mono text-xs text-muted-foreground">
+      <span className="flex items-baseline justify-between gap-4 font-mono text-xs text-muted-foreground">
         {label}
         <span className="text-foreground">{value.toFixed(2)}s</span>
       </span>
@@ -62,84 +52,55 @@ export function DebugDemo() {
   const [draggable, setDraggable] = React.useState(true)
 
   return (
-    <div className="flex w-full max-w-md flex-col gap-6">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Control
-          label="openDuration"
-          value={openDuration}
-          min={0.1}
-          max={2}
-          step={0.05}
-          onChange={setOpenDuration}
-        />
-        <Control
-          label="closeDuration"
-          value={closeDuration}
-          min={0.1}
-          max={2}
-          step={0.05}
-          onChange={setCloseDuration}
-        />
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          {LAYERS.map((layer) => (
-            <span
-              key={layer.label}
-              className="inline-flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground"
-            >
-              <span className={`size-2 rounded-full ${layer.swatch}`} />
-              {layer.label}
-            </span>
-          ))}
+    <div className="flex w-full flex-col items-center gap-8">
+      <div className="flex w-full max-w-md flex-col gap-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Control
+            label="openDuration"
+            value={openDuration}
+            min={0.1}
+            max={2}
+            step={0.05}
+            onChange={setOpenDuration}
+          />
+          <Control
+            label="closeDuration"
+            value={closeDuration}
+            min={0.1}
+            max={2}
+            step={0.05}
+            onChange={setCloseDuration}
+          />
         </div>
-        <button
-          type="button"
-          onClick={() => setDraggable((value) => !value)}
-          className="rounded-lg border px-2.5 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          draggable: {String(draggable)}
-        </button>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {LAYERS.map((layer) => (
+              <span
+                key={layer.label}
+                className="inline-flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground"
+              >
+                <span className={`size-2 rounded-full ${layer.swatch}`} />
+                {layer.label}
+              </span>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setDraggable((value) => !value)}
+            className="rounded-lg border px-2.5 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            draggable: {String(draggable)}
+          </button>
+        </div>
       </div>
 
-      <EssentialDialog
+      <NewTransactionDialog
         debug
         draggable={draggable}
         openDuration={openDuration}
         closeDuration={closeDuration}
-      >
-        <EssentialDialogTrigger
-          render={
-            <Button variant="outline" className="w-full">
-              Open with debug
-            </Button>
-          }
-        />
-        <EssentialDialogContent>
-          <EssentialDialogHeader>
-            <EssentialDialogTitle>Layers</EssentialDialogTitle>
-            <EssentialDialogDescription>
-              Open the console: the origin and target boxes, live coverage and the
-              distance and speed each drag release was judged on are all logged as
-              they happen.
-            </EssentialDialogDescription>
-          </EssentialDialogHeader>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 font-mono text-xs text-muted-foreground">
-            <dt>openDuration</dt>
-            <dd className="text-foreground">{openDuration.toFixed(2)}s</dd>
-            <dt>closeDuration</dt>
-            <dd className="text-foreground">{closeDuration.toFixed(2)}s</dd>
-            <dt>draggable</dt>
-            <dd className="text-foreground">{String(draggable)}</dd>
-          </dl>
-          <EssentialDialogFooter>
-            <EssentialDialogClose
-              render={<Button variant="outline">Close</Button>}
-            />
-          </EssentialDialogFooter>
-        </EssentialDialogContent>
-      </EssentialDialog>
+      />
     </div>
   )
 }

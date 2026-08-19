@@ -3,7 +3,7 @@ import path from "node:path"
 
 import { ApiReference } from "@/components/showcase/api-reference"
 import { DebugDemo } from "@/components/showcase/demos/debug-demo"
-import { ThemedDemo } from "@/components/showcase/demos/themed-demo"
+import { NewTransactionDialog } from "@/components/showcase/demos/new-transaction-dialog"
 import { Install } from "@/components/showcase/install"
 import { Panel, Section } from "@/components/showcase/panel"
 import { PreviewTabs } from "@/components/showcase/preview-tabs"
@@ -102,15 +102,15 @@ export default function Home() {
         description="Same component, different knobs: --essential-dialog-radius, --essential-dialog-width, --essential-dialog-padding, --essential-dialog-backdrop. The trigger's radius is half its height, never 999px — a radius clamps to half the shorter side, so a pill radius renders as a circle at every intermediate size on the way up."
       >
         <Panel hint="Drag the panel anywhere and release past 100px, or flick it, to dismiss.">
-          <ThemedDemo />
+          <NewTransactionDialog />
         </Panel>
       </Section>
 
       <Section
         title="Debug"
-        description="debug outlines every layer and logs what the morph measured. Move the sliders to feel why closing is shorter than opening: at equal durations there is a long middle where the box is neither the dialog nor the button."
+        description="The same dialog as above, with debug on: every layer outlined and every measurement logged. Move the sliders to feel why closing is shorter than opening — at equal durations there is a long middle where the box is neither the dialog nor the button."
       >
-        <Panel>
+        <Panel className="min-h-[420px]">
           <DebugDemo />
         </Panel>
       </Section>
