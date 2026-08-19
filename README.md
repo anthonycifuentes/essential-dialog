@@ -200,7 +200,14 @@ The trigger is the origin, so it has to be a real DOM node — that is what
 - **The drag lives on its own wrapper**, so the gesture and Flip never write to
   the same properties on the same element. On release the wrapper's transform is
   baked into the surface's own box, so the close morph starts from where you let
-  go instead of unwinding to centre first.
+  go instead of unwinding to centre first. The miniature stays frozen at the size
+  the content was laid out at, not at the shrunken box on screen — freezing to
+  what is on screen re-flows the content into it, which shows full-size text and
+  its own scrollbar for the first frames of the close.
+- **Radius and opacity are read against the largest the box gets in this morph**,
+  which is its resting size when opening but only the drag's scale when closing
+  from a dragged-down dialog. Without that, releasing a half-size dialog would pop
+  its corners and its content before the close had moved a pixel.
 - **The backdrop is an element, not `::backdrop`**, which JS cannot reach and
   whose opacity has to track the drag frame by frame.
 - **The resting dialog is laid out by CSS, not by the animation.** The morph needs

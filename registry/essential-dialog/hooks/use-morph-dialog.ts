@@ -345,6 +345,13 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
   /* Whether the origin is round, and the radius the dialog rests at. Set on
      build, reused by the close so a mid-morph dismiss still knows the target. */
   const shapeRef = React.useRef<{ round: boolean; target: number } | null>(null)
+  /* The largest the box gets during THIS morph, as a fraction of the frozen
+     content box: 1 when opening (it reaches its resting size), but only the drag
+     scale when closing from a dragged-down dialog. Radius and opacity are read
+     against it so both are already where the eye last saw them when the close
+     takes over. */
+  const kRefRef = React.useRef(1)
+  const settledRef = React.useRef(false)
   const dragRef = React.useRef<DragState | null>(null)
 
   React.useEffect(() => {
@@ -384,24 +391,31 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
 
   /* ------------------------------------------------------------------ child -- */
 
-  const freezeChild = React.useCallback(() => {
+  const freezeChild = React.useCallback((size?: { w: number; h: number }) => {
     /* Measure the SURFACE, not the content's natural size. On a short screen
        max-height caps the surface below the content's natural height, and a
        miniature keeping the content's aspect can then never fill that box:
        coverage tops out below the threshold and the content stays invisible.
        Freezing to the box it has to end up in makes coverage reach 1 at rest by
-       definition, at any viewport. */
+       definition, at any viewport.
+
+       `size` overrides that measurement for a close that follows a drag, where
+       the surface on screen is a scaled-down version of the box the content was
+       laid out in. Freezing to what is on screen would re-flow the content into
+       the small box — full-size text, its own scrollbar — instead of keeping the
+       miniature the drag was showing. */
     const surface = nodes.current.surface
     const win = nodes.current.window
     if (!surface || !win) return
-    const r = surface.getBoundingClientRect()
-    frozenRef.current = { w: r.width, h: r.height }
+    const r = size ?? surface.getBoundingClientRect()
+    frozenRef.current = { w: "w" in r ? r.w : r.width, h: "h" in r ? r.h : r.height }
+    const { w, h } = frozenRef.current
     gsap.set(win, {
-      width: r.width,
-      height: r.height,
-      minWidth: r.width,
-      minHeight: r.height,
-      maxHeight: r.height,
+      width: w,
+      height: h,
+      minWidth: w,
+      minHeight: h,
+      maxHeight: h,
       position: "absolute",
       left: "50%",
       top: "50%",
@@ -455,7 +469,8 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     const k = Math.min(s.width / f.w, s.height / f.h)
     const coverage = Math.min((f.w * k) / s.width, (f.h * k) / s.height)
     const fit = gsap.utils.clamp(0, 1, (coverage - 0.8) / 0.2)
-    const room = gsap.utils.clamp(0, 1, (k - 0.45) / 0.35)
+    const kn = k / (kRefRef.current || 1)
+    const room = gsap.utils.clamp(0, 1, (kn - 0.45) / 0.35)
     const opacity = fit * room
     gsap.set(win, { scale: k, opacity })
 
@@ -463,7 +478,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     let radius: number | undefined
     if (shape?.round) {
       const half = Math.min(s.width, s.height) / 2
-      const t = gsap.utils.clamp(0, 1, (k - 0.25) / 0.45)
+      const t = gsap.utils.clamp(0, 1, (kn - 0.25) / 0.45)
       const eased = t * t * (3 - 2 * t) // smoothstep, so both ends are calm
       radius = Math.min(half, half + (shape.target - half) * eased)
       gsap.set(surface, { borderRadius: radius })
@@ -476,6 +491,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
         frozen: `${Math.round(f.w)}×${Math.round(f.h)}`,
         scale: Math.round(k * 1000) / 1000,
         coverage: Math.round(coverage * 1000) / 1000,
+        kRef: Math.round(kRefRef.current * 1000) / 1000,
         room: Math.round(room * 100) / 100,
         opacity: Math.round(opacity * 100) / 100,
         ...(radius === undefined
@@ -500,6 +516,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
       clearProps:
         "position,margin,left,top,width,height,backgroundColor,borderRadius",
     })
+    settledRef.current = true
     markScrollable()
     log("settled — layout handed back to CSS")
   }, [thawChild, markScrollable, log])
@@ -520,6 +537,8 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
 
     tlRef.current?.kill()
     gsap.set([surface, win, backdrop, dragEl], { clearProps: "all" })
+    kRefRef.current = 1 // opening: the box grows all the way to its resting size
+    settledRef.current = false
 
     const o = optsRef.current
     const OPEN = reducedRef.current ? 0.001 : o.openDuration
@@ -710,8 +729,24 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
 
     closingRef.current = true
     tlRef.current?.pause()
+
+    /* The LAYOUT box, read before bakeDrag rewrites it and immune to the drag
+       transform on the wrapper above — this is the size the content was laid out
+       at, which is what the miniature has to keep. */
+    const resting = settledRef.current
+      ? { w: surface.offsetWidth, h: surface.offsetHeight }
+      : null
     bakeDrag()
-    freezeChild() // settled dialogs have their content back in normal flow
+    if (resting) freezeChild(resting)
+
+    /* Where the drag left it, as a fraction of that box: 1 when the dialog was
+       untouched, the drag's own scale when it was dragged down. */
+    const baked = surface.getBoundingClientRect()
+    const frozen = frozenRef.current
+    kRefRef.current = frozen
+      ? Math.min(baked.width / frozen.w, baked.height / frozen.h)
+      : 1
+    fitFrame() // no visible step between the drag and the first frame of the close
 
     const o = optsRef.current
     const D = reducedRef.current ? 0.001 : o.closeDuration
@@ -725,6 +760,8 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
       unlockScroll()
       trigger?.focus({ preventScroll: true })
       closingRef.current = false
+      settledRef.current = false
+      kRefRef.current = 1
       setIsOpen(false)
       log("closed — all inline styles cleared")
       o.onOpenChange?.(false)
