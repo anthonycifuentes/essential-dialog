@@ -448,6 +448,14 @@ function EssentialDialogContent({
                  under the finger allows panning. Once the content overflows,
                  scrolling wins the vertical axis back. */
               "touch-none data-[scrollable=true]:touch-pan-y",
+              /* iOS Safari zooms the page when a focused field computes below
+                 16px, and Tailwind's preflight gives form controls `font: inherit`
+                 — so the `text-sm` above would hand every bare <input> in here a
+                 14px size and a zoom with it. Floored, not set: `max()` keeps a
+                 larger root font-size or a consumer's bigger field intact, and
+                 the guard only applies where a zoom can happen at all. The
+                 dialog's own 14px type is untouched. */
+              "pointer-coarse:[&_input]:text-[max(16px,1rem)] pointer-coarse:[&_textarea]:text-[max(16px,1rem)] pointer-coarse:[&_select]:text-[max(16px,1rem)]",
               // interactive children own their own gestures
               "[&_input]:touch-auto [&_textarea]:touch-auto [&_select]:touch-auto [&_button]:touch-auto [&_a]:touch-auto [&_label]:touch-auto",
               windowClassName

@@ -21,10 +21,12 @@ type MorphProps = {
   fullscreen?: boolean | number | string
 }
 
+/* `text-base md:text-sm`, like components/ui/input.tsx and for the same reason:
+   iOS Safari zooms the page when a focused input computes below 16px. */
 function ThemedInput(props: React.ComponentProps<"input">) {
   return (
     <input
-      className="w-full rounded-xl border bg-muted/40 px-4 py-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
+      className="w-full rounded-xl border bg-muted/40 px-4 py-3 text-base outline-none md:text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
       {...props}
     />
   )

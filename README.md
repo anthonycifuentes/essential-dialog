@@ -138,6 +138,34 @@ gesture thresholds and every CSS variable behave exactly the same — and becaus
 the resting dialog is laid out by CSS, crossing the breakpoint while the dialog
 is open simply re-lays it out.
 
+### Forms on mobile
+
+iOS Safari zooms the page whenever a focused field computes below 16px, and
+Tailwind's preflight gives form controls `font: inherit` — so the window's `text-sm`
+would otherwise hand every bare `<input>` you put in here a 14px size and a zoom
+with it. The window floors fields at 16px where a zoom can actually happen:
+
+```css
+@media (pointer: coarse) {
+  input, textarea, select { font-size: max(16px, 1rem) }
+}
+```
+
+Floored rather than set, so a larger root font-size or a field you deliberately
+made bigger survives; scoped to coarse pointers, so nothing about the desktop
+dialog changes; and the dialog's own 14px type is untouched. The alternative —
+`maximum-scale=1` on the viewport — is a [WCAG 1.4.4][wcag] failure, since it
+takes pinch-zoom away from everyone to fix a font size.
+
+Note that the on-screen keyboard does **not** shrink `dvh` by default: the keyboard
+resizes the visual viewport, not the layout one. It only matters in `fullscreen`,
+where the surface is `h-dvh` and a footer can end up behind the keyboard. Chromium
+and Firefox can be told otherwise with `interactive-widget=resizes-content`
+(`export const viewport = { interactiveWidget: "resizes-content" }` in Next); Safari
+ignores it, and wants the `visualViewport` resize event instead.
+
+[wcag]: https://www.w3.org/WAI/WCAG22/Understanding/resize-text.html
+
 ### Debugging
 
 `<EssentialDialog debug>` — the counterpart to `<morph-dialog debug>` — outlines
