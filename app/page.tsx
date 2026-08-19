@@ -101,7 +101,7 @@ export default function Home() {
         title="Themed with CSS variables"
         description="Same component, different knobs: --essential-dialog-radius, --essential-dialog-width, --essential-dialog-padding, --essential-dialog-backdrop. The trigger's radius is half its height, never 999px — a radius clamps to half the shorter side, so a pill radius renders as a circle at every intermediate size on the way up."
       >
-        <Panel hint="Drag the panel anywhere and release past 100px, or flick it, to dismiss.">
+        <Panel hint="Both buttons open the same dialog — each morph grows out of the shape you pressed. Drag the panel anywhere and release past 100px, or flick it, to dismiss.">
           <NewTransactionDialog />
         </Panel>
       </Section>
