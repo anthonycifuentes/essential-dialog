@@ -23,6 +23,7 @@ import {
 type EssentialDialogContextValue = {
   open: boolean
   debug: boolean
+  fullscreen: boolean
   openDialog: () => void
   closeDialog: () => void
   refs: MorphDialogRefs
@@ -75,6 +76,7 @@ function EssentialDialog({
   dismissSpeed,
   dragFalloff,
   draggable,
+  fullscreen,
   debug,
 }: EssentialDialogProps) {
   const morph = useMorphDialog({
@@ -84,6 +86,7 @@ function EssentialDialog({
     dismissSpeed,
     dragFalloff,
     draggable,
+    fullscreen,
     debug,
     onOpenChange,
   })
@@ -114,6 +117,7 @@ function EssentialDialog({
     () => ({
       open: morph.isOpen,
       debug: morph.debug,
+      fullscreen: morph.fullscreen,
       openDialog: morph.open,
       closeDialog: morph.close,
       refs: morph.refs,
@@ -129,6 +133,7 @@ function EssentialDialog({
     [
       morph.isOpen,
       morph.debug,
+      morph.fullscreen,
       morph.open,
       morph.close,
       morph.refs,
@@ -354,6 +359,7 @@ function EssentialDialogContent({
       data-slot="essential-dialog"
       data-state={ctx.open ? "open" : "closed"}
       data-debug={ctx.debug ? "true" : undefined}
+      data-fullscreen={ctx.fullscreen ? "true" : undefined}
       aria-labelledby={ctx.hasTitle ? ctx.titleId : undefined}
       aria-describedby={ctx.hasDescription ? ctx.descriptionId : undefined}
       onCancel={(event) => {
@@ -395,11 +401,20 @@ function EssentialDialogContent({
         <div
           ref={surfaceRef}
           data-slot="essential-dialog-content"
+          data-fullscreen={ctx.fullscreen ? "true" : undefined}
           {...dragHandlers}
           className={cn(
-            "relative z-[1] box-border w-(--essential-dialog-width) max-h-(--essential-dialog-max-height)",
+            /* A flex column so the window below can shrink: capped by max-height,
+               the surface's auto height still measures the content exactly, and
+               anything taller than the cap scrolls inside instead of being
+               clipped out of reach. */
+            "relative z-[1] box-border flex flex-col w-(--essential-dialog-width) max-h-(--essential-dialog-max-height)",
             "cursor-grab touch-none overflow-hidden will-change-transform active:cursor-grabbing motion-reduce:cursor-default",
             "rounded-(--essential-dialog-radius) bg-(--essential-dialog-surface) text-(color:--essential-dialog-foreground) shadow-(--essential-dialog-shadow)",
+            /* Fullscreen only changes the box the morph lands in — the CSS
+               variables still theme it, and every gesture behaves the same. */
+            ctx.fullscreen &&
+              "h-dvh max-h-none w-screen max-w-none rounded-none",
             // debug: the surface is the box Flip animates; the window is what
             // gets scaled and faded inside it
             ctx.debug && "outline-2 outline-fuchsia-500/80",
@@ -414,10 +429,20 @@ function EssentialDialogContent({
           <div
             ref={windowRef}
             data-slot="essential-dialog-window"
+            data-fullscreen={ctx.fullscreen ? "true" : undefined}
             className={cn(
-              "flex origin-center flex-col gap-(--essential-dialog-gap) overflow-auto overscroll-contain p-(--essential-dialog-padding) text-sm",
+              "flex min-h-0 flex-1 origin-center flex-col gap-(--essential-dialog-gap) overflow-auto overscroll-contain p-(--essential-dialog-padding) text-sm",
               "rounded-(--essential-dialog-radius) bg-(--essential-dialog-surface)",
+              /* Edge to edge means the notch and the home indicator are now
+                 the component's problem. */
+              ctx.fullscreen &&
+                "pt-[calc(var(--essential-dialog-padding)+env(safe-area-inset-top))] pr-[calc(var(--essential-dialog-padding)+env(safe-area-inset-right))] pb-[calc(var(--essential-dialog-padding)+env(safe-area-inset-bottom))] pl-[calc(var(--essential-dialog-padding)+env(safe-area-inset-left))]",
               ctx.debug && "outline-1 outline-emerald-400/80",
+              /* The gesture is claimed here, not on the surface: a touch lands
+                 on the content, and Chrome cancels the pointer if the element
+                 under the finger allows panning. Once the content overflows,
+                 scrolling wins the vertical axis back. */
+              "touch-none data-[scrollable=true]:touch-pan-y",
               // interactive children own their own gestures
               "[&_input]:touch-auto [&_textarea]:touch-auto [&_select]:touch-auto [&_button]:touch-auto [&_a]:touch-auto [&_label]:touch-auto",
               windowClassName

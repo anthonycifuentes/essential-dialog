@@ -87,11 +87,34 @@ On `<EssentialDialog>`:
 | `open`            | —       | Controlled. Drives `showModal()`/`close()` rather than rendering two trees. |
 | `defaultOpen`     | `false` | Open on mount.                                                              |
 | `onOpenChange`    | —       | Fires when the morph has fully finished in either direction.                 |
+| `fullscreen`      | `false` | Edge to edge instead of centred. See below.                                  |
 | `debug`           | `false` | Outlines every layer and logs what the morph measured. See below.            |
 
 On `<EssentialDialogContent>`: `className` styles the morphing surface,
 `windowClassName` the scrolling box inside it, `backdropClassName` the backdrop,
 and `showCloseButton` (default `true`) toggles the corner ✕.
+
+### Fullscreen
+
+Off by default — the dialog is centred at `--essential-dialog-width`. Opt in per
+instance, either always or by viewport:
+
+```tsx
+<EssentialDialog fullscreen>                          {/* always */}
+<EssentialDialog fullscreen={768}>                     {/* narrower than 768px */}
+<EssentialDialog fullscreen="(orientation: portrait)"> {/* any media query */}
+```
+
+A number is a breakpoint — fullscreen while the viewport is narrower than that
+many px, lining up with where Tailwind's `sm:`/`md:` split the same edge. The
+surface then fills the viewport, drops its radius, and adds the safe-area insets
+so a notch or a home indicator does not sit on top of your content; the content
+scrolls inside it.
+
+It only changes the box the morph lands in. The morph itself, the drag, the
+gesture thresholds and every CSS variable behave exactly the same — and because
+the resting dialog is laid out by CSS, crossing the breakpoint while the dialog
+is open simply re-lays it out.
 
 ### Debugging
 
@@ -152,16 +175,25 @@ The trigger is the origin, so it has to be a real DOM node — that is what
 
 - **The surface animates real `width`/`height`, not `scale`** (`scale: false` in
   both Flip calls), so its radius stays a radius and its border stays crisp.
-- **A pill trigger needs `border-radius: 50%` of its height, never `999px`.** A
-  radius clamps to half the shorter side, so `999px` renders as a circle at every
-  intermediate size on the way up.
+- **A round trigger keeps its roundness while it grows.** Tweening two absolute
+  radii is what makes a circle look wrong: `23.5px` is half of a 47px circle but a
+  rounding error on a 440px dialog, so the box squares off within a few frames of
+  leaving the trigger. When the trigger's radius is at or past half its shorter
+  side — a circle, a pill, `50%`, `rounded-full` — the radius is instead derived
+  from the box on every frame: exactly as round as its own shorter side allows
+  while it is small, relaxing into the dialog's radius once there is enough box
+  for a corner to read as a corner. Any other trigger tweens between the two
+  radii, which is right for them.
 - **Colour and radius hand over in ~18% of the duration**, not across all of it.
   Spread over the full morph, the box reads as a growing button rather than an
   arriving dialog.
-- **The content's opacity comes from measurement, not the clock.** Coverage — how
-  much of the surface the miniature fills — reaches 1 only when the two boxes
-  coincide, so the content is present exactly while it fits its container, in
-  both directions, with no timing to tune.
+- **The content's opacity comes from measurement, not the clock.** Two questions,
+  both about the box. *Fit* is how much of the surface the miniature fills, which
+  reaches 1 only when the two boxes coincide. *Room* is how much of its final size
+  the box has actually reached — needed because a circular or square trigger
+  already matches the dialog's aspect ratio on frame one, and fit alone would hand
+  you a legible-but-tiny copy of the whole dialog inside a 47px dot. Neither has
+  any timing to tune, and both play in reverse for free.
 - **Closing is not the mirror of opening.** A mirrored ease idles at full size
   then collapses; even motion (`power2.inOut`, and a shorter duration) is what
   lets you watch the dialog become a button again.
@@ -171,6 +203,22 @@ The trigger is the origin, so it has to be a real DOM node — that is what
   go instead of unwinding to centre first.
 - **The backdrop is an element, not `::backdrop`**, which JS cannot reach and
   whose opacity has to track the drag frame by frame.
+- **The resting dialog is laid out by CSS, not by the animation.** The morph needs
+  the surface pinned at absolute coordinates and the content frozen at a fixed
+  size; both are a liability once it has arrived, because pinned coordinates do not
+  re-centre and a frozen box does not reflow. They are cleared the moment the
+  timeline completes — every value equals what CSS would compute, so nothing moves
+  — and the open dialog resizes, rotates and reflows like ordinary markup.
+- **Locking the page scroll reserves the scrollbar's gutter.** Hiding the body's
+  overflow takes the scrollbar with it and the page slides sideways into the freed
+  space at the exact moment the dialog opens; the gutter is re-added as padding so
+  the layout stays still.
+- **Touch has to be told who owns the gesture.** `touch-action` has to sit on the
+  element under the finger, not just on the surface: Chrome cancels the pointer the
+  moment it decides the gesture belongs to a scroller, which killed drag-to-dismiss
+  on mobile. The content box is `touch-action: none` while it fits, and `pan-y`
+  once it overflows — scrolling gets the vertical axis back, and a sideways flick
+  still dismisses.
 
 Under `prefers-reduced-motion: reduce` the whole timeline collapses to 1ms and
 the gesture is disabled.

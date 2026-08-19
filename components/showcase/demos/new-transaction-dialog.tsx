@@ -17,6 +17,7 @@ type MorphProps = {
   openDuration?: number
   closeDuration?: number
   draggable?: boolean
+  fullscreen?: boolean | number | string
 }
 
 function ThemedInput(props: React.ComponentProps<"input">) {
@@ -40,9 +41,9 @@ function TransactionDialog({
   return (
     <EssentialDialog {...morph}>
       {variant === "pill" ? (
-        /* Half the height, never 999px: a radius clamps to half the shorter
-           side, so a pill radius renders as a circle at every intermediate size
-           on the way up to the dialog. */
+        /* Fully round on purpose: the radius is derived from the box on every
+           frame, so this stays a pill all the way up instead of squaring off as
+           soon as it leaves the trigger. `rounded-full` works too. */
         <EssentialDialogTrigger className="inline-flex h-[47px] items-center rounded-[23.5px] bg-foreground px-6 text-sm font-medium text-background">
           New transaction
         </EssentialDialogTrigger>

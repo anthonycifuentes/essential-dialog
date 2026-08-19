@@ -3,6 +3,7 @@ import path from "node:path"
 
 import { ApiReference } from "@/components/showcase/api-reference"
 import { DebugDemo } from "@/components/showcase/demos/debug-demo"
+import { FullscreenDemo } from "@/components/showcase/demos/fullscreen-demo"
 import { NewTransactionDialog } from "@/components/showcase/demos/new-transaction-dialog"
 import { Install } from "@/components/showcase/install"
 import { Panel, Section } from "@/components/showcase/panel"
@@ -99,10 +100,19 @@ export default function Home() {
 
       <Section
         title="Themed with CSS variables"
-        description="Same component, different knobs: --essential-dialog-radius, --essential-dialog-width, --essential-dialog-padding, --essential-dialog-backdrop. The trigger's radius is half its height, never 999px — a radius clamps to half the shorter side, so a pill radius renders as a circle at every intermediate size on the way up."
+        description="Same component, different knobs: --essential-dialog-radius, --essential-dialog-width, --essential-dialog-padding, --essential-dialog-backdrop. Round triggers are first class: a pill or a circle keeps its roundness while it grows and only relaxes into the dialog's radius once there is enough box for a corner, because the radius is derived from the box each frame rather than tweened between two numbers."
       >
-        <Panel hint="Both buttons open the same dialog — each morph grows out of the shape you pressed. Drag the panel anywhere and release past 100px, or flick it, to dismiss.">
+        <Panel hint="Both buttons open the same dialog — each morph grows out of the shape you pressed, pill or circle. Drag the panel anywhere and release past 100px, or flick it, to dismiss.">
           <NewTransactionDialog />
+        </Panel>
+      </Section>
+
+      <Section
+        title="Fullscreen"
+        description="Opt into an edge-to-edge dialog: `fullscreen` for always, a number for a breakpoint — fullscreen while the viewport is narrower than that many px — or any media query string. Off by default. It only changes the box the morph lands in: the surface fills the viewport, drops its radius, adds the safe-area insets, and the content scrolls inside it. Because the resting dialog is laid out by CSS, crossing the breakpoint while it is open just re-lays it out."
+      >
+        <Panel className="min-h-[420px]">
+          <FullscreenDemo />
         </Panel>
       </Section>
 

@@ -45,6 +45,13 @@ const DIALOG: Row[] = [
     default: "415",
   },
   {
+    name: "fullscreen?",
+    type: "boolean | number | string",
+    description:
+      "Open edge to edge instead of centred. true is always; a number is a breakpoint (fullscreen below that many px); a string is any media query. Crossing the breakpoint while open re-lays the dialog out.",
+    default: "false",
+  },
+  {
     name: "debug?",
     type: "boolean",
     description:

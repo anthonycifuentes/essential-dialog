@@ -56,6 +56,17 @@ export type MorphDialogOptions = {
   /** Drag-to-dismiss. Always off under `prefers-reduced-motion`. */
   draggable?: boolean
   /**
+   * Open edge to edge instead of centred. `true` is always; a number is a
+   * breakpoint — fullscreen while the viewport is narrower than that many px —
+   * and a string is any media query, e.g. `"(max-width: 640px)"` or
+   * `"(orientation: portrait)"`. Omit for a centred dialog, which is the default.
+   *
+   * It only changes the box the morph lands in: the surface fills the viewport,
+   * loses its radius, and the content scrolls inside it. Everything else — the
+   * morph, the drag, the gesture thresholds — is unchanged.
+   */
+  fullscreen?: boolean | number | string
+  /**
    * Outline every layer and log the measurements the morph is built from:
    * origin and target boxes, the frozen content box, live coverage, and the
    * distance/speed the drag was judged on.
@@ -71,6 +82,7 @@ const DEFAULTS = {
   dismissSpeed: 0.5,
   dragFalloff: 415,
   draggable: true,
+  fullscreen: false as boolean | number | string,
   debug: false,
 } satisfies Required<Omit<MorphDialogOptions, "onOpenChange">>
 
@@ -82,6 +94,7 @@ function resolveOptions(o: MorphDialogOptions) {
     dismissSpeed: o.dismissSpeed ?? DEFAULTS.dismissSpeed,
     dragFalloff: o.dragFalloff ?? DEFAULTS.dragFalloff,
     draggable: o.draggable ?? DEFAULTS.draggable,
+    fullscreen: o.fullscreen ?? DEFAULTS.fullscreen,
     debug: o.debug ?? false,
     onOpenChange: o.onOpenChange,
   }
@@ -99,6 +112,35 @@ const rect = (el: Element | null) => {
     radius: cs.borderRadius,
     background: cs.backgroundColor,
   }
+}
+
+/**
+ * Computed border-radius in px, plus whether it is "fully round" — at or past
+ * half the shorter side. A circle, a pill, a percentage radius and Tailwind's
+ * `rounded-full` (`calc(infinity * 1px)`) all land here as round.
+ */
+function radiusOf(cs: CSSStyleDeclaration, width: number, height: number) {
+  const short = Math.min(width, height)
+  const half = short / 2
+  const raw = cs.borderTopLeftRadius
+  const value = parseFloat(raw)
+  if (!Number.isFinite(value)) return { px: half, round: true }
+  const px = raw.endsWith("%") ? (short * value) / 100 : value
+  return { px: Math.min(px, half), round: px >= half - 0.5 }
+}
+
+/**
+ * `fullscreen` as a media query. `true` becomes the sentinel ALWAYS, since there
+ * is no query that is unconditionally true across engines; a number becomes a
+ * max-width just under the breakpoint, so `640` means "narrower than 640px" and
+ * lines up with how Tailwind's `sm:` splits the same edge.
+ */
+const ALWAYS = "always"
+function fullscreenQuery(value: boolean | number | string) {
+  if (value === false || value === "") return null
+  if (value === true) return ALWAYS
+  if (typeof value === "number") return `(max-width: ${value - 0.02}px)`
+  return value
 }
 
 type DragState = {
@@ -204,6 +246,30 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     optsRef.current = resolveOptions(options)
   })
 
+  /* useSyncExternalStore rather than state-in-an-effect: matchMedia is exactly the
+     external store it exists for, and the resting dialog is laid out by CSS, so a
+     breakpoint crossing while the dialog is open re-lays it out for free. */
+  const query = fullscreenQuery(options.fullscreen ?? DEFAULTS.fullscreen)
+  const subscribeFullscreen = React.useCallback(
+    (onChange: () => void) => {
+      if (!query || query === ALWAYS) return () => {}
+      const mq = window.matchMedia(query)
+      mq.addEventListener("change", onChange)
+      return () => mq.removeEventListener("change", onChange)
+    },
+    [query]
+  )
+  const readFullscreen = React.useCallback(() => {
+    if (!query) return false
+    if (query === ALWAYS) return true
+    return window.matchMedia(query).matches
+  }, [query])
+  const fullscreen = React.useSyncExternalStore(
+    subscribeFullscreen,
+    readFullscreen,
+    () => query === ALWAYS
+  )
+
   const reducedRef = React.useRef(false)
   React.useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)")
@@ -218,6 +284,39 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
   /* Flip pairs a recorded element with a target by data-flip-id. Scoped per
      instance so two dialogs on one page can never claim each other's origin. */
   const flipId = "essential-dialog-" + React.useId().replace(/[^a-zA-Z0-9_-]/g, "")
+
+  /* Hiding the body's overflow takes the scrollbar away with it, and the page
+     reflows into the freed gutter — every centred thing on it slides sideways at
+     the exact moment the dialog opens. Reserving the gutter as padding keeps the
+     layout still. The dialog itself is position:fixed, so it is measured against
+     the viewport and does not care about body padding. */
+  const scrollLockRef = React.useRef<{
+    overflow: string
+    paddingRight: string
+  } | null>(null)
+
+  const lockScroll = React.useCallback(() => {
+    if (scrollLockRef.current) return
+    const body = document.body
+    scrollLockRef.current = {
+      overflow: body.style.overflow,
+      paddingRight: body.style.paddingRight,
+    }
+    const gutter = window.innerWidth - document.documentElement.clientWidth
+    body.style.overflow = "hidden"
+    if (gutter > 0) {
+      const existing = parseFloat(getComputedStyle(body).paddingRight) || 0
+      body.style.paddingRight = `${existing + gutter}px`
+    }
+  }, [])
+
+  const unlockScroll = React.useCallback(() => {
+    const saved = scrollLockRef.current
+    if (!saved) return
+    scrollLockRef.current = null
+    document.body.style.overflow = saved.overflow
+    document.body.style.paddingRight = saved.paddingRight
+  }, [])
 
   /* `debug`: one channel for everything the morph measures, so a mismatch between
      what it read and what you see is visible without a debugger. */
@@ -243,15 +342,35 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
   const tlRef = React.useRef<gsap.core.Timeline | null>(null)
   const closingRef = React.useRef(false)
   const frozenRef = React.useRef<{ w: number; h: number } | null>(null)
+  /* Whether the origin is round, and the radius the dialog rests at. Set on
+     build, reused by the close so a mid-morph dismiss still knows the target. */
+  const shapeRef = React.useRef<{ round: boolean; target: number } | null>(null)
   const dragRef = React.useRef<DragState | null>(null)
 
   React.useEffect(() => {
     return () => {
       tlRef.current?.kill()
-      document.body.style.overflow = ""
+      const saved = scrollLockRef.current
+      if (saved) {
+        document.body.style.overflow = saved.overflow
+        document.body.style.paddingRight = saved.paddingRight
+      }
       document.body.style.userSelect = ""
       document.body.style.webkitUserSelect = ""
     }
+  }, [])
+
+  /* Touch has to choose between dragging the dialog and scrolling its content,
+     and it chooses through touch-action — Chrome cancels our pointer the moment
+     it decides the gesture belongs to a scroller. So the window is touch-action:
+     none while its content fits (drag from anywhere), and pan-y once it
+     overflows (scroll the content, flick sideways to dismiss). */
+  const markScrollable = React.useCallback(() => {
+    const win = nodes.current.window
+    if (!win) return
+    const scrollable = win.scrollHeight - win.clientHeight > 1
+    win.dataset.scrollable = String(scrollable)
+    return scrollable
   }, [])
 
   /* The trigger is either this component's own node, or — when the element it
@@ -300,27 +419,56 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     })
   }, [])
 
-  /* Scale the miniature to CONTAIN it in the surface, uniformly. One factor keeps
-     the dialog's proportions at any size; Flip's own scale:true derives scaleX
-     and scaleY separately, stretching the content to fill whatever shape the box
+  /* Everything that has to be re-derived from the box on every frame: the
+     content's scale and opacity, and — for a round trigger — the radius.
+     Measured, never timed, so it plays identically in reverse.
+
+     SCALE contains the miniature in the surface, uniformly. One factor keeps the
+     dialog's proportions at any size; Flip's own scale:true derives scaleX and
+     scaleY separately, stretching the content to fill whatever shape the box
      currently is — that is the squashing.
 
-     Opacity comes from the same measurement rather than from the clock. COVERAGE
-     is how much of the surface the miniature fills: 1 only when the two boxes
-     coincide, dropping as the surface's aspect diverges from the dialog's. So the
-     content is present exactly while it fits its container, in both directions,
-     with no timing to tune. */
-  const fitChild = React.useCallback(() => {
+     OPACITY is two questions, both about the box rather than the clock. FIT is
+     how much of the surface the miniature fills: 1 only when the two boxes
+     coincide, dropping as the surface's aspect diverges from the dialog's. ROOM
+     is how much of its final size the box has actually reached. Fit alone is
+     enough for a wide trigger, whose aspect is nowhere near the dialog's — but a
+     circle or a square starts out already matching it, and fit would hand you a
+     legible-but-tiny copy of the whole dialog inside a 47px dot. Room is what
+     keeps the content out until there is a dialog to put it in.
+
+     RADIUS, when the trigger is round, stays exactly as round as the box's own
+     shorter side allows: a circle grows as a circle, a pill as a pill. The
+     dialog's own radius only takes over once there is enough box for it to read
+     as a corner. Tweening the two radii as plain numbers instead is what makes a
+     circular origin look wrong — 23.5px is half of a 47px circle but a rounding
+     error on a 440px dialog, so the box squares off within a few frames of
+     leaving the trigger. */
+  const fitFrame = React.useCallback(() => {
     const surface = nodes.current.surface
     const win = nodes.current.window
     const f = frozenRef.current
     if (!surface || !win || !f) return
     const s = surface.getBoundingClientRect()
     if (!s.width || !s.height) return
+
     const k = Math.min(s.width / f.w, s.height / f.h)
     const coverage = Math.min((f.w * k) / s.width, (f.h * k) / s.height)
-    const opacity = gsap.utils.clamp(0, 1, (coverage - 0.8) / 0.2)
+    const fit = gsap.utils.clamp(0, 1, (coverage - 0.8) / 0.2)
+    const room = gsap.utils.clamp(0, 1, (k - 0.45) / 0.35)
+    const opacity = fit * room
     gsap.set(win, { scale: k, opacity })
+
+    const shape = shapeRef.current
+    let radius: number | undefined
+    if (shape?.round) {
+      const half = Math.min(s.width, s.height) / 2
+      const t = gsap.utils.clamp(0, 1, (k - 0.25) / 0.45)
+      const eased = t * t * (3 - 2 * t) // smoothstep, so both ends are calm
+      radius = Math.min(half, half + (shape.target - half) * eased)
+      gsap.set(surface, { borderRadius: radius })
+    }
+
     log(
       "fit",
       {
@@ -328,11 +476,33 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
         frozen: `${Math.round(f.w)}×${Math.round(f.h)}`,
         scale: Math.round(k * 1000) / 1000,
         coverage: Math.round(coverage * 1000) / 1000,
+        room: Math.round(room * 100) / 100,
         opacity: Math.round(opacity * 100) / 100,
+        ...(radius === undefined
+          ? {}
+          : { radius: Math.round(radius * 10) / 10 }),
       },
       120
     )
   }, [log])
+
+  /* Hand the resting dialog back to CSS. The morph needs the surface pinned at
+     absolute coordinates and the content frozen at a fixed size — but once it has
+     arrived, both are a liability: pinned coordinates do not re-centre when the
+     viewport changes, and a frozen content box does not reflow. Clearing them the
+     moment the timeline completes costs nothing visually (every value equals what
+     CSS would compute) and makes the open dialog fully responsive. */
+  const settle = React.useCallback(() => {
+    const surface = nodes.current.surface
+    if (!surface) return
+    thawChild()
+    gsap.set(surface, {
+      clearProps:
+        "position,margin,left,top,width,height,backgroundColor,borderRadius",
+    })
+    markScrollable()
+    log("settled — layout handed back to CSS")
+  }, [thawChild, markScrollable, log])
 
   /* ------------------------------------------------------------------- open -- */
 
@@ -375,7 +545,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
       })
     }
 
-    const tl = gsap.timeline({ paused: true })
+    const tl = gsap.timeline({ paused: true, onComplete: settle })
 
     /* No trigger to morph from (a programmatically opened dialog): fall back to
        a scale-and-fade so the component still works headless. */
@@ -390,8 +560,9 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
         0
       )
       tl.fromTo(backdrop, { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "none" }, 0)
-      tl.eventCallback("onUpdate", () => fitChild())
-      tlRef.current = tl.progress(1).progress(0)
+      tl.eventCallback("onUpdate", () => fitFrame())
+      tlRef.current = tl.progress(1, true).progress(0, true)
+      fitFrame()
       return tlRef.current
     }
 
@@ -418,59 +589,85 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
       0
     )
 
+    /* A round trigger hands its radius to fitFrame, which derives it from the
+       box each frame; anything else tweens between the two absolute radii, where
+       a straight number tween is exactly right. */
+    const triggerBox = trigger.getBoundingClientRect()
+    const origin = radiusOf(tCS, triggerBox.width, triggerBox.height)
+    /* Measured against the box the surface RESTS at — frozen a moment ago — not
+       against whatever it is mid-flight. */
+    const resting = frozenRef.current ?? { w: 0, h: 0 }
+    const target = radiusOf(sCS, resting.w, resting.h)
+    shapeRef.current = { round: origin.round, target: target.px }
+
     /* Colour and radius are NOT Flip props. Spread across the full duration the
        box stays visibly the trigger's colour past halfway and reads as a growing
        button rather than an arriving dialog. They hand over in ~125ms; only the
        geometry takes the full duration. */
     gsap.set(surface, {
       backgroundColor: tCS.backgroundColor,
-      borderRadius: tCS.borderRadius,
+      ...(origin.round ? {} : { borderRadius: tCS.borderRadius }),
     })
     tl.to(
       surface,
       {
         backgroundColor: surfaceBg,
-        borderRadius: surfaceRadius,
+        ...(origin.round ? {} : { borderRadius: surfaceRadius }),
         duration: OPEN * 0.18,
         ease: "power2.out",
       },
       OPEN * 0.02
     )
 
-    tl.eventCallback("onUpdate", () => fitChild())
+    tl.eventCallback("onUpdate", () => fitFrame())
     tl.fromTo(
       win,
       { filter: "blur(8px)" },
       {
         filter: "blur(0px)",
-        duration: reducedRef.current ? 0.001 : Math.min(0.5, OPEN),
+        duration: reducedRef.current ? 0.001 : OPEN * 0.71,
         ease: EASE_BLUR,
       },
       0
     )
     tl.fromTo(backdrop, { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "none" }, 0)
 
-    tlRef.current = tl.progress(1).progress(0) // lock in both ends
+    /* Lock in both ends so Flip records start and end values — with events
+       suppressed, or the jump to the end would fire onComplete and settle a
+       dialog that has not opened yet. The first frame is then set by hand. */
+    tlRef.current = tl.progress(1, true).progress(0, true)
+    fitFrame()
     log("open", {
       from: rect(trigger),
       to: rect(surface),
       frozenContent: frozenRef.current,
       duration: OPEN,
       reducedMotion: reducedRef.current,
+      fullscreen,
       flipId,
     })
     return tlRef.current
-  }, [flipId, freezeChild, fitChild, getTrigger, log])
+  }, [flipId, freezeChild, fitFrame, getTrigger, log, settle, fullscreen])
 
   const open = React.useCallback(() => {
     const dialog = nodes.current.dialog
     if (!dialog || dialog.open || closingRef.current) return
-    document.body.style.overflow = "hidden" // showModal does not lock scroll
+    lockScroll() // showModal does not lock scroll
     dialog.showModal()
     build()?.play()
     setIsOpen(true)
     optsRef.current.onOpenChange?.(true)
-  }, [build])
+  }, [build, lockScroll])
+
+  /* The resting dialog is laid out by CSS, so a resize re-centres and reflows it
+     on its own — all that is left to re-derive is whether the content still
+     fits, which decides who owns a touch gesture. */
+  React.useEffect(() => {
+    if (!isOpen) return
+    const onResize = () => markScrollable()
+    window.addEventListener("resize", onResize)
+    return () => window.removeEventListener("resize", onResize)
+  }, [isOpen, markScrollable])
 
   /* ------------------------------------------------------------------ close -- */
 
@@ -485,7 +682,12 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     const s = surface.getBoundingClientRect()
     gsap.set(dragEl, { clearProps: "transform,transformOrigin" })
     const d = dragEl.getBoundingClientRect()
+    /* position/margin included because the surface may have been settled back to
+       a centred grid item: left/top only mean these coordinates once it is out of
+       flow again. */
     gsap.set(surface, {
+      position: "absolute",
+      margin: 0,
       left: s.left - d.left,
       top: s.top - d.top,
       width: s.width,
@@ -509,6 +711,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     closingRef.current = true
     tlRef.current?.pause()
     bakeDrag()
+    freezeChild() // settled dialogs have their content back in normal flow
 
     const o = optsRef.current
     const D = reducedRef.current ? 0.001 : o.closeDuration
@@ -519,7 +722,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
       thawChild()
       gsap.set([surface, win, backdrop, dragEl], { clearProps: "all" })
       dialog.close()
-      document.body.style.overflow = ""
+      unlockScroll()
       trigger?.focus({ preventScroll: true })
       closingRef.current = false
       setIsOpen(false)
@@ -542,6 +745,21 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     }
 
     const tCS = getComputedStyle(trigger)
+    const triggerBox = trigger.getBoundingClientRect()
+    const origin = radiusOf(tCS, triggerBox.width, triggerBox.height)
+    /* Re-read roundness — the trigger may have been restyled while the dialog was
+       open — but keep the resting radius from the build: the surface's own is
+       mid-morph if this close interrupted an open. */
+    shapeRef.current = {
+      round: origin.round,
+      target:
+        shapeRef.current?.target ??
+        radiusOf(
+          getComputedStyle(surface),
+          frozenRef.current?.w ?? 0,
+          frozenRef.current?.h ?? 0
+        ).px,
+    }
 
     /* Flip.to is the exact mirror of the Flip.from that opened it: same plugin,
        same pairing, same scale:false. Flip.fit solves the same problem a
@@ -559,15 +777,15 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
       surface,
       {
         backgroundColor: tCS.backgroundColor,
-        borderRadius: tCS.borderRadius,
+        ...(origin.round ? {} : { borderRadius: tCS.borderRadius }),
         duration: D * 0.42,
         ease: "power1.in",
       },
       D * 0.58
     )
-    tl.eventCallback("onUpdate", () => fitChild())
+    tl.eventCallback("onUpdate", () => fitFrame())
     tl.to(backdrop, { opacity: 0, duration: 0.25, ease: "power1.in" }, D * 0.6)
-  }, [bakeDrag, thawChild, fitChild, getTrigger, log])
+  }, [bakeDrag, freezeChild, thawChild, fitFrame, getTrigger, log, unlockScroll])
 
   /* ------------------------------------------------------------------- drag -- */
 
@@ -686,6 +904,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     open,
     close,
     debug: options.debug ?? false,
+    fullscreen,
     refs,
     isDismissTarget,
     dragHandlers: {
