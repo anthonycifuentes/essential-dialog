@@ -56,6 +56,17 @@ export type MorphDialogOptions = {
   /** Drag-to-dismiss. Always off under `prefers-reduced-motion`. */
   draggable?: boolean
   /**
+   * Take the trigger away for as long as the dialog is up, so the morph reads as
+   * the button BECOMING the dialog rather than spawning one beside it. Without
+   * it the trigger sits there uncovered the moment the growing surface leaves
+   * its box, and you are watching two things instead of one.
+   *
+   * `visibility`, not `display`: the trigger keeps its layout box, so the page
+   * does not reflow around the gap and the close can still read the geometry,
+   * colour and radius it has to land back in.
+   */
+  hideTrigger?: boolean
+  /**
    * Open edge to edge instead of centred. `true` is always; a number is a
    * breakpoint — fullscreen while the viewport is narrower than that many px —
    * and a string is any media query, e.g. `"(max-width: 640px)"` or
@@ -82,6 +93,7 @@ const DEFAULTS = {
   dismissSpeed: 0.5,
   dragFalloff: 415,
   draggable: true,
+  hideTrigger: true,
   fullscreen: false as boolean | number | string,
   debug: false,
 } satisfies Required<Omit<MorphDialogOptions, "onOpenChange">>
@@ -94,6 +106,7 @@ function resolveOptions(o: MorphDialogOptions) {
     dismissSpeed: o.dismissSpeed ?? DEFAULTS.dismissSpeed,
     dragFalloff: o.dragFalloff ?? DEFAULTS.dragFalloff,
     draggable: o.draggable ?? DEFAULTS.draggable,
+    hideTrigger: o.hideTrigger ?? DEFAULTS.hideTrigger,
     fullscreen: o.fullscreen ?? DEFAULTS.fullscreen,
     debug: o.debug ?? false,
     onOpenChange: o.onOpenChange,
@@ -364,10 +377,56 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
   const settledRef = React.useRef(false)
   const dragRef = React.useRef<DragState | null>(null)
 
+  /* The trigger currently hidden behind the morph, with whatever inline
+     visibility it had before — restored on the way out rather than hard-coded
+     back to "visible", because the trigger belongs to the call site. Held as the
+     element itself rather than re-resolved through getTrigger, so a trigger that
+     was swapped or restyled while the dialog was open still gets its own value
+     back. */
+  const hiddenTriggerRef = React.useRef<{
+    el: HTMLElement
+    visibility: string
+    transitionProperty: string
+  } | null>(null)
+
+  const concealTrigger = React.useCallback((el: HTMLElement | null) => {
+    if (!el || hiddenTriggerRef.current) return
+    hiddenTriggerRef.current = {
+      el,
+      visibility: el.style.visibility,
+      transitionProperty: el.style.transitionProperty,
+    }
+    /* The transition has to go first, and it is not optional. `visibility` IS a
+       transitionable property, and it interpolates by a rule of its own: for the
+       whole of the transition the value is whichever end is `visible`. So a
+       trigger with `transition-all` — every shadcn Button has one — answers
+       "visible" for another 150ms after being told to hide, and the button sits
+       there uncovered through the first fifth of the morph. Both writes land in
+       one style flush, so `none` is already in force when the visibility change
+       is resolved. */
+    el.style.transitionProperty = "none"
+    el.style.visibility = "hidden"
+  }, [])
+
+  const revealTrigger = React.useCallback(() => {
+    const hidden = hiddenTriggerRef.current
+    if (!hidden) return
+    hiddenTriggerRef.current = null
+    /* Visible again before the transition is handed back, so the trigger cannot
+       be caught mid-interpolation by the focus() that follows this. */
+    hidden.el.style.visibility = hidden.visibility
+    hidden.el.getBoundingClientRect() // flush the style change on its own
+    hidden.el.style.transitionProperty = hidden.transitionProperty
+  }, [])
+
   React.useEffect(() => {
     return () => {
       tlRef.current?.kill()
       closeTlRef.current?.kill()
+      /* The trigger can outlive this hook — useMorphDialog is usable on its own,
+         against an element the caller keeps — so unmounting mid-morph must not
+         leave it invisible. */
+      revealTrigger()
       const saved = scrollLockRef.current
       if (saved) {
         document.body.style.overflow = saved.overflow
@@ -376,7 +435,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
       document.body.style.userSelect = ""
       document.body.style.webkitUserSelect = ""
     }
-  }, [])
+  }, [revealTrigger])
 
   /* Touch has to choose between dragging the dialog and scrolling its content,
      and it chooses through touch-action — Chrome cancels our pointer the moment
@@ -607,6 +666,13 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     const tCS = getComputedStyle(trigger)
     const originState = Flip.getState(trigger) // geometry only
 
+    /* Out it goes, on the first frame — where the surface is still sitting
+       exactly on top of it, in its colour and at its radius, so there is nothing
+       to see happen. Read after the origin state, though the order does not
+       matter to Flip: isVisible is purely geometric, and a hidden trigger keeps
+       its box. */
+    if (o.hideTrigger) concealTrigger(trigger)
+
     pin()
     freezeChild() // only now — the surface has a box of its own
 
@@ -677,12 +743,22 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
       to: rect(surface),
       frozenContent: frozenRef.current,
       duration: OPEN,
+      hideTrigger: o.hideTrigger,
       reducedMotion: reducedRef.current,
       fullscreen,
       flipId,
     })
     return tlRef.current
-  }, [flipId, freezeChild, fitFrame, getTrigger, log, settle, fullscreen])
+  }, [
+    flipId,
+    freezeChild,
+    fitFrame,
+    getTrigger,
+    log,
+    settle,
+    fullscreen,
+    concealTrigger,
+  ])
 
   const open = React.useCallback(() => {
     const dialog = nodes.current.dialog
@@ -793,6 +869,9 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
       thawChild()
       gsap.set([surface, win, backdrop, dragEl], { clearProps: "all" })
       dialog.close()
+      /* Back in the same frame the dialog leaves, and before the focus call
+         below: a visibility:hidden button cannot take focus. */
+      revealTrigger()
       unlockScroll()
       trigger?.focus({ preventScroll: true })
       closingRef.current = false
@@ -872,6 +951,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
     getTrigger,
     log,
     open,
+    revealTrigger,
     unlockScroll,
   ])
 

@@ -27,6 +27,13 @@ const DIALOG: Row[] = [
     default: "true",
   },
   {
+    name: "hideTrigger?",
+    type: "boolean",
+    description:
+      "Hide the trigger while the dialog is open, so the button becomes the dialog instead of sitting beside it. Hidden with visibility, so the page never reflows around the gap and the close can still measure the box it lands in.",
+    default: "true",
+  },
+  {
     name: "dismissDistance?",
     type: "number",
     description: "Radial px the surface must travel before release dismisses it.",

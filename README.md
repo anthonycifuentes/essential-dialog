@@ -86,6 +86,7 @@ On `<EssentialDialog>`:
 | `openDuration`    | `0.7`   | Seconds. The trigger → dialog morph.                                        |
 | `closeDuration`   | `0.45`  | Shorter on purpose — see below.                                             |
 | `draggable`       | `true`  | Drag-to-dismiss. Always off under `prefers-reduced-motion`.                 |
+| `hideTrigger`     | `true`  | Hide the trigger while the dialog is open. See below.                        |
 | `dismissDistance` | `100`   | Radial px before release dismisses.                                         |
 | `dismissSpeed`    | `0.5`   | px/ms, so a flick counts even when it barely moves.                         |
 | `dragFalloff`     | `415`   | `scale = 1 - distance / dragFalloff`, floored at `.3`.                       |
@@ -98,6 +99,22 @@ On `<EssentialDialog>`:
 On `<EssentialDialogContent>`: `className` styles the morphing surface,
 `windowClassName` the scrolling box inside it, `backdropClassName` the backdrop,
 and `showCloseButton` (default `true`) toggles the corner ✕.
+
+### Hiding the trigger
+
+The point of the morph is that the button *becomes* the dialog — so by default the
+trigger goes away for as long as the dialog is up. It is hidden on the first frame,
+where the surface is still sitting exactly on top of it, and comes back on the last
+one; leave it visible and it reappears from behind the surface the instant the box
+starts to grow, which reads as two objects rather than one.
+
+```tsx
+<EssentialDialog hideTrigger={false}>
+```
+
+It is hidden with `visibility`, not `display`, so the trigger keeps its layout box:
+the page never reflows around the gap, and the close can still read the geometry,
+colour and radius it has to land back in.
 
 ### Fullscreen
 

@@ -76,6 +76,7 @@ function EssentialDialog({
   dismissSpeed,
   dragFalloff,
   draggable,
+  hideTrigger,
   fullscreen,
   debug,
 }: EssentialDialogProps) {
@@ -86,6 +87,7 @@ function EssentialDialog({
     dismissSpeed,
     dragFalloff,
     draggable,
+    hideTrigger,
     fullscreen,
     debug,
     onOpenChange,

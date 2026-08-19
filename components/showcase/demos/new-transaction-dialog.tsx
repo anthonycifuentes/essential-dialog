@@ -17,6 +17,7 @@ type MorphProps = {
   openDuration?: number
   closeDuration?: number
   draggable?: boolean
+  hideTrigger?: boolean
   fullscreen?: boolean | number | string
 }
 

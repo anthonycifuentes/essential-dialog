@@ -46,10 +46,35 @@ function Control({
   )
 }
 
+/* Both booleans read the same way, so they get the same control: the label names
+   the prop and the value is the value, rather than a switch you have to map back
+   to an API. */
+function Toggle({
+  label,
+  value,
+  onToggle,
+}: {
+  label: string
+  value: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={value}
+      className="inline-flex min-h-10 items-center rounded-lg border px-3 font-mono text-[11px] text-muted-foreground transition-[transform,background-color,color] hover:bg-muted hover:text-foreground active:scale-[0.96]"
+    >
+      {label}: <span className="ml-1 text-foreground">{String(value)}</span>
+    </button>
+  )
+}
+
 export function DebugDemo() {
   const [openDuration, setOpenDuration] = React.useState(0.7)
   const [closeDuration, setCloseDuration] = React.useState(0.45)
   const [draggable, setDraggable] = React.useState(true)
+  const [hideTrigger, setHideTrigger] = React.useState(true)
 
   return (
     <div className="flex w-full flex-col items-center gap-8">
@@ -85,19 +110,25 @@ export function DebugDemo() {
               </span>
             ))}
           </div>
-          <button
-            type="button"
-            onClick={() => setDraggable((value) => !value)}
-            className="inline-flex min-h-10 items-center rounded-lg border px-3 font-mono text-[11px] text-muted-foreground transition-[transform,background-color,color] hover:bg-muted hover:text-foreground active:scale-[0.96]"
-          >
-            draggable: {String(draggable)}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Toggle
+              label="draggable"
+              value={draggable}
+              onToggle={() => setDraggable((value) => !value)}
+            />
+            <Toggle
+              label="hideTrigger"
+              value={hideTrigger}
+              onToggle={() => setHideTrigger((value) => !value)}
+            />
+          </div>
         </div>
       </div>
 
       <NewTransactionDialog
         debug
         draggable={draggable}
+        hideTrigger={hideTrigger}
         openDuration={openDuration}
         closeDuration={closeDuration}
       />
