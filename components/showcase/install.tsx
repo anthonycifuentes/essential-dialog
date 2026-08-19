@@ -3,16 +3,19 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CodeBlock } from "@/components/showcase/code-block"
 
-const ITEM = "@essential/essential-dialog"
+const ITEM_URL = "https://essential-dialog.vercel.app/r/essential-dialog.json"
+const TEMPLATE = "https://essential-dialog.vercel.app/r/{name}.json"
 
+/* pnpm first, and the plain URL rather than a namespace: one command, nothing to
+   register, and it works in a project that has never heard of this registry. */
 const MANAGERS = [
-  { id: "bun", command: `bunx --bun shadcn@latest add ${ITEM}` },
-  { id: "npm", command: `npx shadcn@latest add ${ITEM}` },
-  { id: "pnpm", command: `pnpm dlx shadcn@latest add ${ITEM}` },
-  { id: "yarn", command: `yarn dlx shadcn@latest add ${ITEM}` },
+  { id: "pnpm", run: "pnpm dlx" },
+  { id: "npm", run: "npx" },
+  { id: "bun", run: "bunx --bun" },
+  { id: "yarn", run: "yarn dlx" },
 ]
 
-export function Install({ registryUrl }: { registryUrl: string }) {
+export function Install() {
   return (
     <Tabs defaultValue="cli" className="gap-4">
       <TabsList>
@@ -21,7 +24,7 @@ export function Install({ registryUrl }: { registryUrl: string }) {
       </TabsList>
 
       <TabsContent value="cli" className="flex flex-col gap-4">
-        <Tabs defaultValue="npm" className="gap-3">
+        <Tabs defaultValue="pnpm" className="gap-3">
           <TabsList variant="line">
             {MANAGERS.map((m) => (
               <TabsTrigger key={m.id} value={m.id}>
@@ -30,26 +33,36 @@ export function Install({ registryUrl }: { registryUrl: string }) {
             ))}
           </TabsList>
           {MANAGERS.map((m) => (
-            <TabsContent key={m.id} value={m.id}>
-              <CodeBlock code={`$ ${m.command}`} language="bash" />
+            <TabsContent key={m.id} value={m.id} className="flex flex-col gap-3">
+              <CodeBlock
+                code={`$ ${m.run} shadcn@latest add ${ITEM_URL}`}
+                language="bash"
+              />
+              <details className="group">
+                <summary className="w-fit cursor-pointer text-xs text-muted-foreground transition-colors hover:text-foreground">
+                  Or install it by namespace
+                </summary>
+                <div className="mt-3 flex flex-col gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    Worth registering once if you plan to pull several items —
+                    after that they resolve by name.
+                  </p>
+                  <CodeBlock
+                    language="bash"
+                    code={`$ ${m.run} shadcn@latest registry add @essential=${TEMPLATE}\n$ ${m.run} shadcn@latest add @essential/essential-dialog`}
+                  />
+                </div>
+              </details>
             </TabsContent>
           ))}
         </Tabs>
-        <p className="text-xs text-muted-foreground">
-          The <code className="font-mono">@essential</code> namespace has to exist
-          in the target project first:
-        </p>
-        <CodeBlock
-          language="bash"
-          code={`$ npx shadcn@latest registry add @essential=${registryUrl}`}
-        />
       </TabsContent>
 
       <TabsContent value="manual" className="flex flex-col gap-4">
         <ol className="flex list-inside list-decimal flex-col gap-2 text-sm text-muted-foreground">
           <li>
             Install the only dependency:{" "}
-            <code className="font-mono text-foreground">npm i gsap</code>
+            <code className="font-mono text-foreground">pnpm add gsap</code>
           </li>
           <li>
             Copy <code className="font-mono text-foreground">use-morph-dialog.ts</code>{" "}

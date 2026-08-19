@@ -11,8 +11,6 @@ import { PreviewTabs } from "@/components/showcase/preview-tabs"
 import { ThemeToggle } from "@/components/showcase/theme-toggle"
 import { EssentialDialogDemo } from "@/registry/essential-dialog-demo/components/essential-dialog-demo"
 
-const REGISTRY_URL = "https://essential-dialog.vercel.app/r/{name}.json"
-
 const USAGE = `import { Button } from "@/components/ui/button"
 import { Field, FieldGroup } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -93,9 +91,9 @@ export default function Home() {
 
       <Section
         title="Install"
-        description="Add it with the shadcn CLI, or copy the source manually. GSAP is the only runtime dependency — Flip and CustomEase have been free since 3.13."
+        description="One command against the item URL — nothing to register, and it works in a project that has never heard of this registry. GSAP is the only runtime dependency; Flip and CustomEase have been free since 3.13."
       >
-        <Install registryUrl={REGISTRY_URL} />
+        <Install />
       </Section>
 
       <Section

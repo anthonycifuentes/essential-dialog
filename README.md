@@ -9,14 +9,19 @@ an existing call site. Nothing inside the component imports from
 `components/ui`: your children are the only opinion about how it looks.
 
 ```bash
-npx shadcn@latest registry add @essential=https://essential-dialog.vercel.app/r/{name}.json
-npx shadcn@latest add @essential/essential-dialog
+pnpm dlx shadcn@latest add https://essential-dialog.vercel.app/r/essential-dialog.json
 ```
 
-Or straight from a URL, no namespace:
+One command against the item URL: nothing to register, and it works in a project
+that has never heard of this registry. Swap `pnpm dlx` for `npx`, `bunx --bun` or
+`yarn dlx` to taste.
+
+If you expect to pull several items from here, registering the namespace once is
+worth it — after that they resolve by name:
 
 ```bash
-npx shadcn@latest add https://essential-dialog.vercel.app/r/essential-dialog.json
+pnpm dlx shadcn@latest registry add @essential=https://essential-dialog.vercel.app/r/{name}.json
+pnpm dlx shadcn@latest add @essential/essential-dialog
 ```
 
 Two files land in your project — `components/ui/essential-dialog.tsx` and
@@ -233,11 +238,14 @@ the gesture is disabled.
 ## Registry development
 
 ```bash
-npm install
-npm run dev              # demo at http://localhost:3000
-npm run registry:build   # regenerate public/r/*.json from registry.json
-npm run typecheck && npm run lint
+pnpm install
+pnpm dev              # demo at http://localhost:3000
+pnpm registry:build   # regenerate public/r/*.json from registry.json
+pnpm typecheck && pnpm lint
 ```
+
+The package manager is pinned with `packageManager` in `package.json`, so
+corepack and the Vercel build both use the same pnpm.
 
 Source of truth is `registry.json`; items live in `registry/`. The built JSON in
 `public/r/` is what consumers install, so rebuild it before committing changes to
