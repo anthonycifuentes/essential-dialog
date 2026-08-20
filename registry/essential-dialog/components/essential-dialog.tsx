@@ -1,39 +1,50 @@
 "use client"
 
 import * as React from "react"
+import { AnimatePresence, motion, usePresence } from "motion/react"
 
 import { cn } from "@/lib/utils"
 import {
   useMorphDialog,
   type MorphDialogOptions,
-  type MorphDialogRefs,
 } from "@/registry/essential-dialog/hooks/use-morph-dialog"
 
 /* ---------------------------------------------------------------------------
- * essential-dialog — a native <dialog> that morphs out of its own trigger.
+ * SPIKE — essential-dialog, driven by Motion's projection engine.
  *
- * The API mirrors shadcn/ui's Dialog (Trigger / Content / Header / Title /
- * Description / Footer / Close, `render` for composition) so it drops into an
- * existing Dialog call site. Nothing inside imports from components/ui: the
- * children you pass are the only opinion about how it looks.
+ * Same parts, same props, same CSS variables as the GSAP build, so the two can
+ * be dropped into the same call site and compared side by side.
  *
- * Everything visual is a CSS variable — see the `cssVars` in registry.json.
+ * The layer stack is where the two implementations actually differ:
+ *
+ *   GSAP                              Motion
+ *   ───────────────────────────────   ────────────────────────────────────────
+ *   GSAP                              Motion
+ *   ───────────────────────────────   ────────────────────────────────────────
+ *   dialog                            dialog
+ *   └ backdrop                        └ backdrop
+ *   └ drag       (transform)          └ centring div  (no transform)
+ *     └ surface  (w/h/left/top)         └ surface     (layoutId + drag)
+ *       └ window (scale + opacity)        └ tint      (the trigger's colour)
+ *                                         └ window    (scaleX/scaleY, opacity)
+ *   (+ an invisible placeholder over the trigger, paired by layoutId)
+ *
+ * The GSAP build separates the drag from the morph so the gesture and Flip
+ * never write to the same element. Motion wants the opposite: `drag` and
+ * `layoutId` belong on the SAME element, because a transformed ancestor is a
+ * coordinate space projection has to unwind, and it unwinds the scale but not
+ * an off-centre transform-origin — which is exactly what a grab-point origin
+ * is. Put the drag one layer up and the close after a drag lands tens of pixels
+ * away from the trigger, silently.
+ *
+ * The layer counts now match. `window` still carries two scale axes rather than
+ * one, because it has to undo the projection's non-uniform scale on the way to
+ * being a miniature — but it writes them as a single composed `transform`
+ * string, because Motion applies individual transforms through CSS variables
+ * and this value is rewritten on every frame.
  * ------------------------------------------------------------------------- */
 
-type EssentialDialogContextValue = {
-  open: boolean
-  debug: boolean
-  fullscreen: boolean
-  openDialog: () => void
-  closeDialog: () => void
-  refs: MorphDialogRefs
-  isDismissTarget: (target: EventTarget | null) => boolean
-  dragHandlers: {
-    onPointerDown: (e: React.PointerEvent<HTMLElement>) => void
-    onPointerMove: (e: React.PointerEvent<HTMLElement>) => void
-    onPointerUp: (e: React.PointerEvent<HTMLElement>) => void
-    onPointerCancel: (e: React.PointerEvent<HTMLElement>) => void
-  }
+type Ctx = ReturnType<typeof useMorphDialog> & {
   titleId: string
   descriptionId: string
   hasTitle: boolean
@@ -42,9 +53,10 @@ type EssentialDialogContextValue = {
   setHasDescription: React.Dispatch<React.SetStateAction<boolean>>
 }
 
-const EssentialDialogContext =
-  React.createContext<EssentialDialogContextValue | null>(null)
+const EssentialDialogContext = React.createContext<Ctx | null>(null)
 
+/* Exported under the same name as the GSAP build's, so a call site that reaches
+   into the context does not care which engine is underneath it. */
 function useEssentialDialog() {
   const ctx = React.useContext(EssentialDialogContext)
   if (!ctx) {
@@ -59,9 +71,7 @@ function useEssentialDialog() {
 
 export type EssentialDialogProps = MorphDialogOptions & {
   children?: React.ReactNode
-  /** Controlled open state. Omit for uncontrolled. */
   open?: boolean
-  /** Open on mount. Uncontrolled only. */
   defaultOpen?: boolean
 }
 
@@ -69,37 +79,16 @@ function EssentialDialog({
   children,
   open: openProp,
   defaultOpen,
-  onOpenChange,
-  openDuration,
-  closeDuration,
-  dismissDistance,
-  dismissSpeed,
-  dragFalloff,
-  draggable,
-  hideTrigger,
-  fullscreen,
-  debug,
+  ...options
 }: EssentialDialogProps) {
-  const morph = useMorphDialog({
-    openDuration,
-    closeDuration,
-    dismissDistance,
-    dismissSpeed,
-    dragFalloff,
-    draggable,
-    hideTrigger,
-    fullscreen,
-    debug,
-    onOpenChange,
-  })
-
+  const morph = useMorphDialog(options)
   const [hasTitle, setHasTitle] = React.useState(false)
   const [hasDescription, setHasDescription] = React.useState(false)
   const id = React.useId()
 
-  /* The morph is imperative — it measures live geometry and owns the <dialog>'s
-     showModal/close. So a controlled `open` drives those calls rather than
-     rendering a different tree. */
+  /* The morph still owns the <dialog>'s showModal/close and still measures live
+     geometry, so a controlled `open` drives those calls rather than rendering a
+     different tree — unchanged from the GSAP build. */
   React.useEffect(() => {
     if (openProp === undefined) return
     if (openProp) morph.open()
@@ -115,16 +104,9 @@ function EssentialDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const value = React.useMemo<EssentialDialogContextValue>(
+  const value = React.useMemo<Ctx>(
     () => ({
-      open: morph.isOpen,
-      debug: morph.debug,
-      fullscreen: morph.fullscreen,
-      openDialog: morph.open,
-      closeDialog: morph.close,
-      refs: morph.refs,
-      isDismissTarget: morph.isDismissTarget,
-      dragHandlers: morph.dragHandlers,
+      ...morph,
       titleId: `essential-dialog-title-${id}`,
       descriptionId: `essential-dialog-description-${id}`,
       hasTitle,
@@ -132,19 +114,7 @@ function EssentialDialog({
       setHasTitle,
       setHasDescription,
     }),
-    [
-      morph.isOpen,
-      morph.debug,
-      morph.fullscreen,
-      morph.open,
-      morph.close,
-      morph.refs,
-      morph.isDismissTarget,
-      morph.dragHandlers,
-      id,
-      hasTitle,
-      hasDescription,
-    ]
+    [morph, id, hasTitle, hasDescription]
   )
 
   return (
@@ -166,16 +136,11 @@ function mergeRefs<T>(...refs: (React.Ref<T> | undefined)[]) {
   }
 }
 
-/**
- * Clone `render` with our props, keeping whatever it already declared. The ref is
- * a separate argument rather than a key in `ours`: react-hooks/refs objects to a
- * ref travelling inside a plain object into a function call.
- */
 function withRender(
   render: React.ReactElement,
   ours: Record<string, unknown>,
   className?: string,
-  attach?: (el: never | null) => void,
+  attach?: React.Ref<never>,
   children?: React.ReactNode
 ) {
   const theirs = render.props as Record<string, unknown> & {
@@ -185,8 +150,6 @@ function withRender(
   const merged: Record<string, unknown> = { ...ours }
 
   if (attach) merged.ref = mergeRefs(theirs.ref, attach)
-  /* Children passed to the part rather than to the render element win, so both
-     `render={<Button>Open</Button>}` and `render={<Button />}>Open<` work. */
   if (children !== undefined) merged.children = children
 
   for (const key of Object.keys(ours)) {
@@ -211,7 +174,6 @@ function withRender(
 /* ----------------------------------------------------------------- trigger -- */
 
 export type EssentialDialogTriggerProps = React.ComponentProps<"button"> & {
-  /** Render as your own element, e.g. `render={<Button variant="outline" />}`. */
   render?: React.ReactElement
 }
 
@@ -223,63 +185,109 @@ function EssentialDialogTrigger({
   ...props
 }: EssentialDialogTriggerProps) {
   const ctx = useEssentialDialog()
-  const { openDialog, open } = ctx
-  /* Destructured, not read inline: react-hooks/refs follows ref-ness through a
-     member expression but not through destructuring. */
-  const { trigger: triggerRef, triggerHost: triggerHostRef } = ctx.refs
+  const { open, isOpen, layoutId, closeTransition, debug, values } = ctx
+  const {
+    trigger: triggerRef,
+    triggerHost: triggerHostRef,
+    origin: originRef,
+  } = ctx.refs
 
-  /* The trigger is the origin of the morph: Flip records this element's live
-     geometry, colour and radius, so it has to be the real DOM node. */
   const shared = {
     "data-slot": "essential-dialog-trigger",
     "aria-haspopup": "dialog" as const,
-    /* deliberately no aria-expanded: it is not the right state for a modal, and
-       shadcn's Button styles aria-expanded triggers with a different background
-       — which Flip would then read as the origin colour on the way out. */
-    "data-state": open ? "open" : "closed",
+    "data-state": isOpen ? "open" : "closed",
     onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
       onClick?.(event)
-      if (!event.defaultPrevented) openDialog()
+      if (!event.defaultPrevented) open()
     },
   }
 
+  /* THE ONE STRUCTURAL COMPROMISE OF THE MOTION ROUTE.
+   *
+   * A shared layout transition needs a real, measurable node on BOTH sides of
+   * the morph, paired by layoutId — Motion has no way to be handed a bare
+   * DOMRect the way Flip.getState can. The GSAP build could put the origin
+   * straight on the trigger and wrap it in `display: contents`, which occupies
+   * no box and changes nothing about the page. Here the trigger needs a
+   * positioned parent so an invisible placeholder can be stretched over it, so
+   * the wrapper becomes a real box: `inline-grid`, which sizes to the button and
+   * makes it the only grid item, but is not free — it is an inline-level box of
+   * its own, so baseline alignment and any `:has`/sibling selector aimed at the
+   * button from outside will see the wrapper first.
+   *
+   * ALWAYS MOUNTED, and that is not cosmetic. Unmount it while the dialog is up
+   * and the close silently stops animating: when the surface is removed, Motion
+   * looks for a previous lead in the layoutId stack to hand the box back to, and
+   * a placeholder that is being created in the same commit has never been lead,
+   * so there is nothing to hand it to. The surface then sits at full size for
+   * the length of the exit and vanishes. Kept mounted, it is the previous lead,
+   * `relegate()` succeeds, and the surface shrinks home.
+   */
+  const placeholder = (
+    <motion.div
+      ref={originRef}
+      layoutId={layoutId}
+      /* Governs the CLOSE: in a shared transition the transition of the element
+         being animated TO is the one that runs, and on the way out that element
+         is this placeholder. */
+      transition={closeTransition}
+      /* The colour is a motion value because it has to TRAVEL: a shared layout
+         transition carries the outgoing element's motion values across and
+         nothing else, and this is how the trigger's colour reaches the morph.
+
+         The radius is deliberately NOT here. Hand Motion an animatable radius on
+         this element and it tweens the surface's corner from it — two numbers,
+         linearly — which is exactly the squaring-off the per-frame derivation in
+         fitFrame exists to prevent. It is written straight to the DOM instead;
+         see the effect in the hook. */
+      style={{ backgroundColor: values.originBackground }}
+      aria-hidden
+      data-slot="essential-dialog-origin"
+      className={cn(
+        "pointer-events-none absolute inset-0 opacity-0",
+        debug && "opacity-100 outline-2 outline-dashed outline-rose-500/70"
+      )}
+    />
+  )
+
   if (render) {
-    /* A `render` element is always wrapped in a display:contents span — no box of
-       its own, so it changes nothing about layout, and the click bubbles up to
-       it. The wrapper is what makes this work with elements created in a Server
-       Component: those cross the RSC boundary as lazy references whose props
-       cannot be read, so they cannot be cloned. When the element IS clonable we
-       still clone it, to put the slot attributes and the ref on the real button
-       — but the structure stays the same either way, so server and client never
-       disagree during hydration. */
     const { onClick: openOnClick, ...attrs } = shared
     return (
       <span
         ref={triggerHostRef}
-        className="contents"
+        className="relative inline-grid"
         data-slot="essential-dialog-trigger-host"
         onClick={openOnClick}
       >
         {React.isValidElement(render)
-          ? /* eslint-disable-next-line react-hooks/refs -- triggerRef is a
-               callback ref, forwarded straight into cloneElement. No ref value
-               is read here. */
-            withRender(render, attrs, className, triggerRef as never, children)
+          ? withRender(
+              render,
+              attrs,
+              className,
+              /* eslint-disable-next-line react-hooks/refs -- a callback ref,
+                 forwarded straight into cloneElement; no ref value is read. */
+              triggerRef as unknown as React.Ref<never>,
+              children
+            )
           : render}
+        {placeholder}
       </span>
     )
   }
 
   return (
-    <button
-      ref={triggerRef}
-      type="button"
-      className={className}
-      {...shared}
-      {...props}
-    >
-      {children}
-    </button>
+    <span className="relative inline-grid">
+      <button
+        ref={triggerRef}
+        type="button"
+        className={className}
+        {...shared}
+        {...props}
+      >
+        {children}
+      </button>
+      {placeholder}
+    </span>
   )
 }
 
@@ -296,18 +304,17 @@ function EssentialDialogClose({
   children,
   ...props
 }: EssentialDialogCloseProps) {
-  const { closeDialog } = useEssentialDialog()
+  const { close } = useEssentialDialog()
 
   const shared = {
     "data-slot": "essential-dialog-close",
     onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
       onClick?.(event)
-      if (!event.defaultPrevented) closeDialog()
+      if (!event.defaultPrevented) close()
     },
   }
 
   if (render) {
-    // Same wrapper, same reason — see EssentialDialogTrigger.
     const { onClick: closeOnClick, ...attrs } = shared
     return (
       <span className="contents" onClick={closeOnClick}>
@@ -325,12 +332,43 @@ function EssentialDialogClose({
   )
 }
 
+/**
+ * Renders nothing, and exists only to keep AnimatePresence from removing the
+ * surface too early.
+ *
+ * AnimatePresence lets a child go as soon as it has nothing left to animate, and
+ * a shared layout animation on its own does not reliably hold it — the surface
+ * gets pulled out of the DOM partway through the close and the last of the morph
+ * is simply missing. The usual workaround is to give the element an `exit` that
+ * animates something for the right length of time, which means keeping a
+ * decorative layer alive purely to burn a duration. `usePresence` says the same
+ * thing directly: not yet, ask me again in closeDuration.
+ */
+function HoldPresence({ ms }: { ms: number }) {
+  const [isPresent, safeToRemove] = usePresence()
+  React.useEffect(() => {
+    if (isPresent) return
+    const id = setTimeout(() => safeToRemove?.(), ms * 1000)
+    return () => clearTimeout(id)
+  }, [isPresent, safeToRemove, ms])
+  return null
+}
+
 /* ----------------------------------------------------------------- content -- */
 
-export type EssentialDialogContentProps = React.ComponentProps<"div"> & {
-  /** Classes for the scrolling content box inside the morphing surface. */
+/* The surface IS a motion.div, so the handful of DOM props whose names Motion
+   has claimed for its own gesture and animation callbacks are off the table. */
+export type EssentialDialogContentProps = Omit<
+  React.ComponentProps<"div">,
+  | "onDrag"
+  | "onDragStart"
+  | "onDragEnd"
+  | "onAnimationStart"
+  | "onAnimationEnd"
+  | "onAnimationIteration"
+  | "style"
+> & {
   windowClassName?: string
-  /** Classes for the backdrop element. */
   backdropClassName?: string
   showCloseButton?: boolean
 }
@@ -344,13 +382,26 @@ function EssentialDialogContent({
   ...props
 }: EssentialDialogContentProps) {
   const ctx = useEssentialDialog()
-  const { closeDialog, dragHandlers, isDismissTarget } = ctx
-  /* Destructured, not read inline: react-hooks/refs rejects a member expression
-     in a ref attribute. */
+  const {
+    isOpen,
+    close,
+    layoutId,
+    fullscreen,
+    debug,
+    openTransition,
+    holdMs,
+    onExitComplete,
+    dismissHandlers,
+    values,
+    dragControls,
+    startDrag,
+    onDrag,
+    onDragEnd,
+    onMorphStart,
+    draggable,
+  } = ctx
   const {
     dialog: dialogRef,
-    backdrop: backdropRef,
-    drag: dragElRef,
     surface: surfaceRef,
     window: windowRef,
   } = ctx.refs
@@ -359,129 +410,176 @@ function EssentialDialogContent({
     <dialog
       ref={dialogRef}
       data-slot="essential-dialog"
-      data-state={ctx.open ? "open" : "closed"}
-      data-debug={ctx.debug ? "true" : undefined}
-      data-fullscreen={ctx.fullscreen ? "true" : undefined}
+      data-state={isOpen ? "open" : "closed"}
+      data-debug={debug ? "true" : undefined}
+      data-fullscreen={fullscreen ? "true" : undefined}
       aria-labelledby={ctx.hasTitle ? ctx.titleId : undefined}
       aria-describedby={ctx.hasDescription ? ctx.descriptionId : undefined}
       onCancel={(event) => {
-        // Escape: cancel the browser's instant close and morph home instead.
         event.preventDefault()
-        closeDialog()
+        close()
       }}
-      onClick={(event) => {
-        if (isDismissTarget(event.target)) closeDialog()
-      }}
+      /* Both halves of the outside click live on the <dialog>, because every
+         layer that counts as "outside" — the backdrop, the centring div — is a
+         descendant of it and the events bubble here. */
+      {...dismissHandlers}
       className={cn(
         "fixed inset-0 m-0 h-dvh max-h-dvh w-screen max-w-[100vw] overflow-visible border-0 bg-transparent p-0 text-inherit",
-        // the real backdrop is the element below: ::backdrop cannot be reached
-        // from JS, and its opacity has to track the drag frame by frame
-        "backdrop:bg-transparent"
+        "backdrop:bg-transparent",
+        /* Not decorative — the hook reads the resting radius off this element,
+           because the surface's own is an inline motion value by then. It is
+           transparent and borderless, so a radius on it paints nothing. */
+        "rounded-(--essential-dialog-radius)"
       )}
     >
-      <div
-        ref={backdropRef}
-        data-slot="essential-dialog-backdrop"
-        className={cn(
-          "pointer-events-none absolute inset-0 z-0 bg-(--essential-dialog-backdrop) opacity-0",
-          ctx.debug && "outline-1 outline-dashed outline-sky-400/60",
-          backdropClassName
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            key="backdrop"
+            data-slot="essential-dialog-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1, transition: { duration: 0.12, ease: "linear" } }}
+            exit={{
+              opacity: 0,
+              transition: { duration: 0.25, ease: "easeIn", delay: 0.1 },
+            }}
+            className={cn(
+              "absolute inset-0 z-0 bg-(--essential-dialog-backdrop)",
+              debug && "outline-1 outline-dashed outline-sky-400/60",
+              backdropClassName
+            )}
+          />
         )}
-      />
+      </AnimatePresence>
 
-      {/* carries the drag transform, so the gesture and Flip never write to the
-          same properties on the same element */}
+      {/* Nothing but centring. The GSAP build's equivalent layer carries the
+          drag transform; here the drag lives on the surface itself and this is
+          deliberately left untransformed — see the note at the top of the
+          file. */}
       <div
-        ref={dragElRef}
-        data-slot="essential-dialog-drag"
+        data-slot="essential-dialog-centre"
         className={cn(
           "absolute inset-0 grid place-items-center",
-          ctx.debug && "outline-1 outline-dashed outline-amber-400/60"
+          debug && "outline-1 outline-dashed outline-amber-400/60"
         )}
       >
-        {/* the growing box — real width/height, so its radius stays a radius */}
-        <div
-          ref={surfaceRef}
-          data-slot="essential-dialog-content"
-          data-fullscreen={ctx.fullscreen ? "true" : undefined}
-          {...dragHandlers}
-          className={cn(
-            /* A flex column so the window below can shrink: capped by max-height,
-               the surface's auto height still measures the content exactly, and
-               anything taller than the cap scrolls inside instead of being
-               clipped out of reach. */
-            "relative z-[1] box-border flex flex-col w-(--essential-dialog-width) max-h-(--essential-dialog-max-height)",
-            /* No will-change here: this box animates width, height, left and top,
-               none of which a compositor hint helps. The drag wrapper is what
-               transforms, and it advertises that for the length of the gesture. */
-            "cursor-grab touch-none overflow-hidden active:cursor-grabbing motion-reduce:cursor-default",
-            "rounded-(--essential-dialog-radius) bg-(--essential-dialog-surface) text-(color:--essential-dialog-foreground) shadow-(--essential-dialog-shadow)",
-            /* Fullscreen only changes the box the morph lands in — the CSS
-               variables still theme it, and every gesture behaves the same. */
-            ctx.fullscreen &&
-              "h-dvh max-h-none w-screen max-w-none rounded-none",
-            // debug: the surface is the box Flip animates; the window is what
-            // gets scaled and faded inside it
-            ctx.debug && "outline-2 outline-fuchsia-500/80",
-            className
-          )}
-          {...props}
-        >
-          {/* Stays in normal flow — declaring position:absolute here would
-              collapse the surface's auto height before it can be measured and
-              the dialog would never grow. The controller positions it
-              absolutely only for the duration of the morph. */}
-          <div
-            ref={windowRef}
-            data-slot="essential-dialog-window"
-            data-fullscreen={ctx.fullscreen ? "true" : undefined}
-            className={cn(
-              "flex min-h-0 flex-1 origin-center flex-col gap-(--essential-dialog-gap) overflow-auto overscroll-contain p-(--essential-dialog-padding) text-sm",
-              "rounded-(--essential-dialog-radius) bg-(--essential-dialog-surface)",
-              /* Edge to edge means the notch and the home indicator are now
-                 the component's problem. */
-              ctx.fullscreen &&
-                "pt-[calc(var(--essential-dialog-padding)+env(safe-area-inset-top))] pr-[calc(var(--essential-dialog-padding)+env(safe-area-inset-right))] pb-[calc(var(--essential-dialog-padding)+env(safe-area-inset-bottom))] pl-[calc(var(--essential-dialog-padding)+env(safe-area-inset-left))]",
-              ctx.debug && "outline-1 outline-emerald-400/80",
-              /* The gesture is claimed here, not on the surface: a touch lands
-                 on the content, and Chrome cancels the pointer if the element
-                 under the finger allows panning. Once the content overflows,
-                 scrolling wins the vertical axis back. */
-              "touch-none data-[scrollable=true]:touch-pan-y",
-              /* iOS Safari zooms the page when a focused field computes below
-                 16px, and Tailwind's preflight gives form controls `font: inherit`
-                 — so the `text-sm` above would hand every bare <input> in here a
-                 14px size and a zoom with it. Floored, not set: `max()` keeps a
-                 larger root font-size or a consumer's bigger field intact, and
-                 the guard only applies where a zoom can happen at all. The
-                 dialog's own 14px type is untouched. */
-              "pointer-coarse:[&_input]:text-[max(16px,1rem)] pointer-coarse:[&_textarea]:text-[max(16px,1rem)] pointer-coarse:[&_select]:text-[max(16px,1rem)]",
-              // interactive children own their own gestures
-              "[&_input]:touch-auto [&_textarea]:touch-auto [&_select]:touch-auto [&_button]:touch-auto [&_a]:touch-auto [&_label]:touch-auto",
-              windowClassName
-            )}
-          >
-            {children}
-            {showCloseButton && (
-              <EssentialDialogClose
-                aria-label="Close"
-                className="absolute top-3 right-3 inline-flex size-8 items-center justify-center rounded-full opacity-60 transition-opacity hover:opacity-100 after:absolute after:-inset-1.5 after:content-['']"
+        <AnimatePresence onExitComplete={onExitComplete}>
+          {isOpen && (
+            <motion.div
+              key="surface"
+              ref={surfaceRef}
+              layoutId={layoutId}
+              layoutCrossfade={false}
+              /* Off, or the dialog fades in as it grows and fades out as it
+                 shrinks — the crossfade is Motion's default because it is
+                 hiding a mismatch between two different elements, and here the
+                 two elements are the same box. */
+              /* Governs the OPEN: the element being animated TO is this one. */
+              transition={openTransition}
+              onLayoutAnimationStart={onMorphStart}
+              data-slot="essential-dialog-content"
+              data-fullscreen={fullscreen ? "true" : undefined}
+              onPointerDown={startDrag}
+              drag={draggable}
+              dragListener={false}
+              dragControls={dragControls}
+              dragMomentum={false}
+              onDrag={onDrag}
+              onDragEnd={onDragEnd}
+              /* backgroundColor is a motion value this component does not own —
+                 see the note on surfaceBackground in the hook — so that the
+                 surface can be handed back to CSS once it has arrived. */
+              style={{
+                x: values.dragX,
+                y: values.dragY,
+                scale: values.dragScale,
+                backgroundColor: values.surfaceBackground,
+              }}
+              className={cn(
+                "relative z-[1] box-border flex w-(--essential-dialog-width) max-h-(--essential-dialog-max-height) flex-col",
+                "cursor-grab touch-none overflow-hidden active:cursor-grabbing motion-reduce:cursor-default",
+                /* The radius CSS rests at. The hook overwrites it inline for the
+                   length of the morph and clears it again on arrival. */
+                "rounded-(--essential-dialog-radius)",
+                fullscreen && "rounded-none",
+                "bg-(--essential-dialog-surface) text-(color:--essential-dialog-foreground) shadow-(--essential-dialog-shadow)",
+                fullscreen && "h-dvh max-h-none w-screen max-w-none",
+                debug && "outline-2 outline-fuchsia-500/80",
+                className
+              )}
+              {...props}
+            >
+              <HoldPresence ms={holdMs} />
+
+              {/* The miniature. Scale and opacity are derived from the live
+                  box every frame, exactly as in the GSAP build — this is the
+                  part Motion has no primitive for, and the reason the hook
+                  still runs a measurement loop.
+
+                  The two scale axes differ because this one layer is doing two
+                  jobs at once: undoing the projection's non-uniform scale, and
+                  shrinking the result to a uniform miniature. Motion's own child
+                  counter-scale (`layout` on this element) does the first job but
+                  anchors the result to the box's corner rather than its centre,
+                  which is wrong for a dialog shrinking into a button. */}
+              <motion.div
+                ref={windowRef}
+                layoutScroll
+                data-slot="essential-dialog-window"
+                data-fullscreen={fullscreen ? "true" : undefined}
+                /* A composed string rather than `scaleX`/`scaleY`: Motion
+                   applies individual transforms through CSS variables so they
+                   can be set independently, and on a value written every frame
+                   that indirection is pure cost. `transform` and `opacity` are
+                   also the two properties every engine accelerates. */
+                style={{
+                  transform: values.contentTransform,
+                  opacity: values.contentOpacity,
+                }}
+                className={cn(
+                  "relative flex min-h-0 flex-1 origin-center flex-col gap-(--essential-dialog-gap) overflow-auto overscroll-contain p-(--essential-dialog-padding) text-sm",
+                  fullscreen &&
+                    "pt-[calc(var(--essential-dialog-padding)+env(safe-area-inset-top))] pr-[calc(var(--essential-dialog-padding)+env(safe-area-inset-right))] pb-[calc(var(--essential-dialog-padding)+env(safe-area-inset-bottom))] pl-[calc(var(--essential-dialog-padding)+env(safe-area-inset-left))]",
+                  debug && "outline-1 outline-emerald-400/80",
+                  /* The gesture is claimed here, not on the surface: a touch
+                     lands on the content, and Chrome cancels the pointer if the
+                     element under the finger allows panning. Once the content
+                     overflows, scrolling wins the vertical axis back. */
+                  "touch-none data-[scrollable=true]:touch-pan-y",
+                  /* Media never answers a drag with a drag of its own. The
+                     pointerdown is already defaulted away, but a selection that
+                     started outside the dialog and was dragged in still lands
+                     here, and WebKit treats an image as draggable independently
+                     of the selection. */
+                  "[&_img]:[-webkit-user-drag:none] [&_video]:[-webkit-user-drag:none] [&_img]:select-none [&_video]:select-none",
+                  "pointer-coarse:[&_input]:text-[max(16px,1rem)] pointer-coarse:[&_textarea]:text-[max(16px,1rem)] pointer-coarse:[&_select]:text-[max(16px,1rem)]",
+                  "[&_input]:touch-auto [&_textarea]:touch-auto [&_select]:touch-auto [&_button]:touch-auto [&_a]:touch-auto [&_label]:touch-auto",
+                  windowClassName
+                )}
               >
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  className="size-4"
-                >
-                  <path d="M18 6 6 18M6 6l12 12" />
-                </svg>
-              </EssentialDialogClose>
-            )}
-          </div>
-        </div>
+                  {children}
+                  {showCloseButton && (
+                    <EssentialDialogClose
+                      aria-label="Close"
+                      className="absolute top-3 right-3 inline-flex size-8 items-center justify-center rounded-full opacity-60 transition-opacity after:absolute after:-inset-1.5 after:content-[''] hover:opacity-100"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        className="size-4"
+                      >
+                        <path d="M18 6 6 18M6 6l12 12" />
+                      </svg>
+                    </EssentialDialogClose>
+                  )}
+                </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </dialog>
   )

@@ -1,7 +1,9 @@
 # essential-dialog
 
 A native `<dialog>` that grows out of its own trigger and shrinks back into it.
-Built on GSAP Flip, distributed as a [shadcn registry](https://ui.shadcn.com/docs/registry) item.
+Built on [Motion](https://motion.dev)'s projection engine, distributed as a
+[shadcn registry](https://ui.shadcn.com/docs/registry) item. A GSAP Flip build
+is available too — same parts, same props, same export names, one import apart.
 
 The API mirrors shadcn/ui's `Dialog` — `Trigger`, `Content`, `Header`, `Title`,
 `Description`, `Footer`, `Close`, and `render` for composition — so it drops into
@@ -26,8 +28,33 @@ pnpm dlx shadcn@latest add @essential/essential-dialog
 
 Two files land in your project — `components/ui/essential-dialog.tsx` and
 `hooks/use-morph-dialog.ts` — plus the CSS variables in your stylesheet and
-`gsap` in your dependencies. GSAP is the only runtime dependency; Flip and
-CustomEase have been free since 3.13.
+`motion` in your dependencies. Motion is the only runtime dependency, and if
+your app already ships it the component adds nothing to the bundle.
+
+### Or on GSAP
+
+The same component, driven by GSAP Flip instead — it animates a real width and
+height rather than projecting a transform:
+
+```bash
+pnpm dlx shadcn@latest add https://essential-dialog.vercel.app/r/essential-dialog-gsap.json
+```
+
+It exports exactly the same names, so the two are interchangeable by import
+path alone:
+
+```diff
+-import { EssentialDialog } from "@/components/ui/essential-dialog"
++import { EssentialDialog } from "@/components/ui/essential-dialog-gsap"
+```
+
+Everything below applies to both, with two exceptions. `bounce` tunes the
+opening spring's overshoot and only exists on the Motion build, where the open
+is a spring rather than a tween. And the two ship different `openDuration`
+defaults — `0.35` on Motion against `0.7` on GSAP — because Motion's is a
+spring's *visual* duration, the point the box appears to have arrived, with the
+settle happening after it. Pick GSAP if you would rather not add Motion; pick
+Motion if you already have it, or want a morph that never triggers layout.
 
 ## Usage
 
@@ -83,9 +110,11 @@ On `<EssentialDialog>`:
 
 | Prop              | Default | Notes                                                                       |
 | ----------------- | ------- | --------------------------------------------------------------------------- |
-| `openDuration`    | `0.7`   | Seconds. The trigger → dialog morph.                                        |
-| `closeDuration`   | `0.45`  | Shorter on purpose — see below.                                             |
+| `openDuration`    | `0.35` / `0.7` | Seconds. Motion / GSAP. On Motion it is a spring's `visualDuration` — the time the box *appears* to arrive in — so half the number is not half the animation. |
+| `closeDuration`   | `0.45`  | A tween on both, evenly eased. See below.                                   |
+| `bounce`          | `0.3`   | Motion only. 0–1 overshoot on the opening spring; `0` matches the GSAP curve. |
 | `draggable`       | `true`  | Drag-to-dismiss. Always off under `prefers-reduced-motion`.                 |
+| `dismissOnOutsideClick` | `true` | Click outside the surface to close. Judged on where the pointer went down **and** came up, so overshooting a text selection does not dismiss. |
 | `hideTrigger`     | `true`  | Hide the trigger while the dialog is open. See below.                        |
 | `dismissDistance` | `100`   | Radial px before release dismisses.                                         |
 | `dismissSpeed`    | `0.5`   | px/ms, so a flick counts even when it barely moves.                         |
@@ -179,7 +208,7 @@ each layer and logs, to the console, every number the morph is built from:
 ```
 
 The outlines say which box is which: blue is the backdrop, amber the drag
-wrapper, **magenta the surface** (the box Flip animates), green the window (what
+wrapper, **magenta the surface** (the box the engine animates), green the window (what
 gets scaled and faded inside it). If the content ever looks squashed or arrives
 late, the `fit` line is where to look — `coverage` should reach 1 exactly when
 the surface and the frozen content box coincide.
@@ -234,7 +263,7 @@ The trigger is the origin, so it has to be a real DOM node — that is what
 `render={<Button />}` is for. A few decisions are load-bearing:
 
 - **The surface animates real `width`/`height`, not `scale`** (`scale: false` in
-  both Flip calls), so its radius stays a radius and its border stays crisp.
+  both morph directions), so its radius stays a radius and its border stays crisp.
 - **A round trigger keeps its roundness while it grows.** Tweening two absolute
   radii is what makes a circle look wrong: `23.5px` is half of a 47px circle but a
   rounding error on a 440px dialog, so the box squares off within a few frames of
@@ -257,7 +286,7 @@ The trigger is the origin, so it has to be a real DOM node — that is what
 - **Closing is not the mirror of opening.** A mirrored ease idles at full size
   then collapses; even motion (`power2.inOut`, and a shorter duration) is what
   lets you watch the dialog become a button again.
-- **The drag lives on its own wrapper**, so the gesture and Flip never write to
+- **On GSAP the drag lives on its own wrapper**, so the gesture and Flip never write to
   the same properties on the same element. On release the wrapper's transform is
   baked into the surface's own box, so the close morph starts from where you let
   go instead of unwinding to centre first. The miniature stays frozen at the size
@@ -311,14 +340,14 @@ a component.
 `reference/morph-dialog.reference.html` is the original single-file vanilla web
 component this was ported from — kept for provenance, not shipped. The timeline
 is a faithful port: same eases (`morphIn` CustomEase in, `power2.inOut` out), same
-`scale: false` Flip pairing, same colour/radius hand-over at 18% and 42% of the
+`scale: false` Flip pairing on that build, same colour/radius hand-over at 18% and 42% of the
 respective durations, same coverage-driven opacity, same drag thresholds and
 `expo.out` snap-back.
 
 It differs from the original in five places, all deliberate:
 
 - `onOpenChange` replaces the `morph-open` / `morph-close` DOM events.
-- The Flip id is per instance, not the constant `morph-dialog`, so two dialogs on
+- The morph id is per instance, not a constant, so two dialogs on
   one page can never claim each other's origin.
 - The blur-in is clamped to `openDuration` instead of a fixed `0.5s`, so a short
   `openDuration` does not finish with the content still blurred.

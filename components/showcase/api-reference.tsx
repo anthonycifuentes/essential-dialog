@@ -1,11 +1,11 @@
-type Row = {
+export type Row = {
   name: string
   type: string
   description: string
   default?: string
 }
 
-const DIALOG: Row[] = [
+export const DIALOG: Row[] = [
   {
     name: "openDuration?",
     type: "number",
@@ -31,6 +31,13 @@ const DIALOG: Row[] = [
     type: "boolean",
     description:
       "Hide the trigger while the dialog is open, so the button becomes the dialog instead of sitting beside it. Hidden with visibility, so the page never reflows around the gap and the close can still measure the box it lands in.",
+    default: "true",
+  },
+  {
+    name: "dismissOnOutsideClick?",
+    type: "boolean",
+    description:
+      "Click anywhere outside the surface to dismiss. Judged on where the pointer went down AND came up, so selecting a line of text and overshooting the edge does not close the dialog. Escape is unaffected either way.",
     default: "true",
   },
   {
@@ -86,7 +93,7 @@ const DIALOG: Row[] = [
   },
 ]
 
-const CONTENT: Row[] = [
+export const CONTENT: Row[] = [
   {
     name: "className?",
     type: "string",
@@ -113,7 +120,7 @@ const CONTENT: Row[] = [
   },
 ]
 
-const PARTS: Row[] = [
+export const PARTS: Row[] = [
   {
     name: "EssentialDialogTrigger",
     type: "{ render?: ReactElement }",
@@ -148,7 +155,7 @@ const PARTS: Row[] = [
   },
 ]
 
-function Table({ title, rows }: { title: string; rows: Row[] }) {
+export function Table({ title, rows }: { title: string; rows: Row[] }) {
   return (
     <div className="flex flex-col gap-3">
       <h3 className="font-mono text-xs text-muted-foreground">{title}</h3>

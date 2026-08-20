@@ -3,8 +3,8 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CodeBlock } from "@/components/showcase/code-block"
 
-const ITEM_URL = "https://essential-dialog.vercel.app/r/essential-dialog.json"
-const TEMPLATE = "https://essential-dialog.vercel.app/r/{name}.json"
+const ORIGIN = "https://essential-dialog.vercel.app"
+const TEMPLATE = `${ORIGIN}/r/{name}.json`
 
 /* pnpm first, and the plain URL rather than a namespace: one command, nothing to
    register, and it works in a project that has never heard of this registry. */
@@ -15,7 +15,22 @@ const MANAGERS = [
   { id: "yarn", run: "yarn dlx" },
 ]
 
-export function Install() {
+/**
+ * Both engines install the same way and export the same names, so this takes the
+ * item name and the package it needs rather than hard-coding either.
+ */
+export function Install({
+  item = "essential-dialog",
+  pkg = "motion",
+  hook = "use-morph-dialog.ts",
+  component = "essential-dialog.tsx",
+}: {
+  item?: string
+  pkg?: string
+  hook?: string
+  component?: string
+}) {
+  const itemUrl = `${ORIGIN}/r/${item}.json`
   return (
     <Tabs defaultValue="cli" className="gap-4">
       <TabsList>
@@ -35,7 +50,7 @@ export function Install() {
           {MANAGERS.map((m) => (
             <TabsContent key={m.id} value={m.id} className="flex flex-col gap-3">
               <CodeBlock
-                code={`$ ${m.run} shadcn@latest add ${ITEM_URL}`}
+                code={`$ ${m.run} shadcn@latest add ${itemUrl}`}
                 language="bash"
               />
               <details className="group">
@@ -49,7 +64,7 @@ export function Install() {
                   </p>
                   <CodeBlock
                     language="bash"
-                    code={`$ ${m.run} shadcn@latest registry add @essential=${TEMPLATE}\n$ ${m.run} shadcn@latest add @essential/essential-dialog`}
+                    code={`$ ${m.run} shadcn@latest registry add @essential=${TEMPLATE}\n$ ${m.run} shadcn@latest add @essential/${item}`}
                   />
                 </div>
               </details>
@@ -62,13 +77,13 @@ export function Install() {
         <ol className="flex list-inside list-decimal flex-col gap-2 text-sm text-muted-foreground">
           <li>
             Install the only dependency:{" "}
-            <code className="font-mono text-foreground">pnpm add gsap</code>
+            <code className="font-mono text-foreground">pnpm add {pkg}</code>
           </li>
           <li>
-            Copy <code className="font-mono text-foreground">use-morph-dialog.ts</code>{" "}
-            into <code className="font-mono text-foreground">hooks/</code> and{" "}
-            <code className="font-mono text-foreground">essential-dialog.tsx</code>{" "}
-            into <code className="font-mono text-foreground">components/ui/</code>{" "}
+            Copy <code className="font-mono text-foreground">{hook}</code> into{" "}
+            <code className="font-mono text-foreground">hooks/</code> and{" "}
+            <code className="font-mono text-foreground">{component}</code> into{" "}
+            <code className="font-mono text-foreground">components/ui/</code>{" "}
             (both are in the Code tab above).
           </li>
           <li>Add the CSS variables to your stylesheet:</li>
@@ -78,7 +93,7 @@ export function Install() {
           code={`:root {
   --essential-dialog-width: min(400px, calc(100vw - 48px));
   --essential-dialog-max-height: calc(100dvh - 48px);
-  --essential-dialog-radius: 32px;
+  --essential-dialog-radius: 26px;
   --essential-dialog-gap: 16px;
   --essential-dialog-padding: 16px;
   --essential-dialog-surface: var(--popover, Canvas);
