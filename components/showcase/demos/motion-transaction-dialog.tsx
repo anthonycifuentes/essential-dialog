@@ -10,23 +10,28 @@ import {
   EssentialDialogHeader,
   EssentialDialogTitle,
   EssentialDialogTrigger,
-} from "@/registry/essential-dialog-gsap/components/essential-dialog-gsap"
+} from "@/registry/essential-dialog/components/essential-dialog"
 
-type MorphProps = {
+/* The GSAP build's NewTransactionDialog, part for part, on the Motion build —
+   same markup, same CSS variables, same two origins. Anything that looks
+   different on the page is the engine, not the demo. */
+
+export type MotionMorphProps = {
   debug?: boolean
   openDuration?: number
   closeDuration?: number
+  /** Motion only: the open is a spring, so overshoot is a number not a curve. */
+  bounce?: number
   draggable?: boolean
   hideTrigger?: boolean
+  dismissOnOutsideClick?: boolean
   fullscreen?: boolean | number | string
 }
 
-/* `text-base md:text-sm`, like components/ui/input.tsx and for the same reason:
-   iOS Safari zooms the page when a focused input computes below 16px. */
 function ThemedInput(props: React.ComponentProps<"input">) {
   return (
     <input
-      className="w-full rounded-xl border bg-muted/40 px-4 py-3 text-base outline-none md:text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
+      className="w-full rounded-xl border bg-muted/40 px-4 py-3 text-base outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 md:text-sm"
       {...props}
     />
   )
@@ -35,25 +40,29 @@ function ThemedInput(props: React.ComponentProps<"input">) {
 /**
  * One dialog, two origins. The pill and the circle are separate instances of the
  * same content, so each morph grows out of the shape you actually pressed —
- * which is also why the Flip id is scoped per instance.
+ * which is also why the layoutId is scoped per instance.
+ *
+ * Both are fully round on purpose. A round origin is the case that separates a
+ * radius DERIVED from the box from one tweened between two numbers: 23.5px is a
+ * circle on a 47px button and a rounding error on a 440px dialog, so anything
+ * that interpolates the two squares the box off within a few frames of leaving
+ * the trigger. Motion will happily do exactly that if you let it own the
+ * property, so this build takes borderRadius back and writes it per frame.
  */
 function TransactionDialog({
   variant,
   ...morph
-}: MorphProps & { variant: "pill" | "icon" }) {
+}: MotionMorphProps & { variant: "pill" | "icon" }) {
   return (
     <EssentialDialog {...morph}>
       {variant === "pill" ? (
-        /* Fully round on purpose: the radius is derived from the box on every
-           frame, so this stays a pill all the way up instead of squaring off as
-           soon as it leaves the trigger. `rounded-full` works too. */
-        <EssentialDialogTrigger className="inline-flex h-[47px] items-center rounded-[23.5px] bg-foreground px-6 text-sm font-medium text-background">
+        <EssentialDialogTrigger className="inline-flex h-[47px] items-center rounded-[23.5px] bg-foreground px-6 text-sm font-medium text-background transition-transform active:scale-[0.96]">
           New transaction
         </EssentialDialogTrigger>
       ) : (
         <EssentialDialogTrigger
           aria-label="New transaction"
-          className="inline-flex size-[47px] items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:text-foreground"
+          className="inline-flex size-[47px] items-center justify-center rounded-full bg-muted text-muted-foreground transition-[transform,color] hover:text-foreground active:scale-[0.96]"
         >
           <PlusIcon className="size-5" strokeWidth={2} />
         </EssentialDialogTrigger>
@@ -63,7 +72,7 @@ function TransactionDialog({
         <EssentialDialogHeader className="rounded-2xl bg-muted/50 p-2">
           <EssentialDialogClose
             aria-label="Close"
-            className="relative inline-flex size-9 items-center justify-center self-start rounded-full bg-muted text-muted-foreground transition-[transform,color] hover:text-foreground active:scale-[0.96] after:absolute after:-inset-1 after:content-['']"
+            className="relative inline-flex size-9 items-center justify-center self-start rounded-full bg-muted text-muted-foreground transition-[transform,color] after:absolute after:-inset-1 after:content-[''] hover:text-foreground active:scale-[0.96]"
           >
             <XIcon className="size-4" strokeWidth={2} />
           </EssentialDialogClose>
@@ -98,14 +107,11 @@ function TransactionDialog({
   )
 }
 
-/**
- * Used twice on the page: plain in the theming section, and with `debug` plus
- * the duration sliders in the debug section. Same component, only props differ.
- */
-export function NewTransactionDialog(morph: MorphProps) {
+/** Used three times: themed, fullscreen and debug. Same component, props differ. */
+export function MotionTransactionDialog(morph: MotionMorphProps) {
   return (
     <div
-      data-showcase="transaction-group"
+      data-showcase="motion-transaction-group"
       className="flex items-center gap-2 rounded-full border bg-muted/40 p-2"
       style={
         {

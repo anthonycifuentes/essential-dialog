@@ -12,13 +12,15 @@ const LAYERS = [
   { label: "window", swatch: "bg-emerald-400/80" },
 ]
 
-function Control({
+export function Control({
   label,
   value,
   min,
   max,
   step,
   onChange,
+  /** Seconds for a duration; pass "" for a unitless knob like a spring's bounce. */
+  unit = "s",
 }: {
   label: string
   value: number
@@ -26,12 +28,16 @@ function Control({
   max: number
   step: number
   onChange: (value: number) => void
+  unit?: string
 }) {
   return (
     <label className="flex flex-col gap-2">
       <span className="flex items-baseline justify-between gap-4 font-mono text-xs text-muted-foreground">
         {label}
-        <span className="text-foreground tabular-nums">{value.toFixed(2)}s</span>
+        <span className="text-foreground tabular-nums">
+          {value.toFixed(2)}
+          {unit}
+        </span>
       </span>
       <Slider
         value={[value]}
@@ -49,7 +55,7 @@ function Control({
 /* Both booleans read the same way, so they get the same control: the label names
    the prop and the value is the value, rather than a switch you have to map back
    to an API. */
-function Toggle({
+export function Toggle({
   label,
   value,
   onToggle,

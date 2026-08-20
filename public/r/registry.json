@@ -7,9 +7,11 @@
       "name": "essential-dialog",
       "type": "registry:ui",
       "title": "Essential Dialog",
-      "description": "A native <dialog> that morphs out of its own trigger and back into it, driven by GSAP Flip. Drop-in API parity with shadcn/ui Dialog: Trigger, Content, Header, Title, Description, Footer, Close and `render` composition. Drag it anywhere to dismiss. Every visual value is a CSS variable and nothing inside imports from components/ui, so the content stays entirely yours.",
+      "description": "A native <dialog> that morphs out of its own trigger and back into it, driven by Motion's projection engine. Drop-in API parity with shadcn/ui Dialog: Trigger, Content, Header, Title, Description, Footer, Close and `render` composition. Drag it anywhere to dismiss, click outside to close, and every visual value is a CSS variable. Nothing inside imports from components/ui, so the content stays entirely yours.",
       "author": "Anthony Cifuentes",
-      "dependencies": ["gsap"],
+      "dependencies": [
+        "motion"
+      ],
       "files": [
         {
           "path": "registry/essential-dialog/components/essential-dialog.tsx",
@@ -38,7 +40,46 @@
           "essential-dialog-shadow": "0 0 24px rgb(0 0 0 / 0.45)"
         }
       },
-      "docs": "Trigger geometry is the origin of the animation, so the trigger must be a real DOM node — compose it with `render={<Button />}`. Size the dialog through --essential-dialog-width rather than a max-w-* class: the surface's width is animated inline and a max-width would clamp the morph. Pass `debug` to outline every layer and log the boxes, coverage and drag thresholds the morph is built from."
+      "docs": "Trigger geometry is the origin of the animation, so the trigger must be a real DOM node \u2014 compose it with `render={<Button />}`. Size the dialog through --essential-dialog-width rather than a max-w-* class. Pass `debug` to outline every layer and log the boxes, coverage and drag thresholds the morph is built from. Prefer GSAP? `essential-dialog-gsap` is the same component on GSAP Flip, exporting the same names \u2014 one import line apart."
+    },
+    {
+      "name": "essential-dialog-gsap",
+      "type": "registry:ui",
+      "title": "Essential Dialog (GSAP)",
+      "description": "The same morphing <dialog>, driven by GSAP Flip instead of Motion \u2014 it animates a real width and height rather than projecting a transform. Exports exactly the same names as `essential-dialog`, so the two are interchangeable by import path. Reach for it if you would rather not add Motion to the bundle.",
+      "author": "Anthony Cifuentes",
+      "dependencies": [
+        "gsap"
+      ],
+      "files": [
+        {
+          "path": "registry/essential-dialog-gsap/components/essential-dialog-gsap.tsx",
+          "type": "registry:ui"
+        },
+        {
+          "path": "registry/essential-dialog-gsap/hooks/use-morph-dialog-gsap.ts",
+          "type": "registry:hook"
+        }
+      ],
+      "cssVars": {
+        "light": {
+          "essential-dialog-width": "min(400px, calc(100vw - 48px))",
+          "essential-dialog-max-height": "calc(100dvh - 48px)",
+          "essential-dialog-radius": "26px",
+          "essential-dialog-gap": "16px",
+          "essential-dialog-padding": "16px",
+          "essential-dialog-surface": "var(--popover, Canvas)",
+          "essential-dialog-foreground": "var(--popover-foreground, CanvasText)",
+          "essential-dialog-muted-foreground": "var(--muted-foreground, GrayText)",
+          "essential-dialog-backdrop": "rgb(0 0 0 / 0.12)",
+          "essential-dialog-shadow": "0 0 16px rgb(0 0 0 / 0.16)"
+        },
+        "dark": {
+          "essential-dialog-backdrop": "rgb(0 0 0 / 0.4)",
+          "essential-dialog-shadow": "0 0 24px rgb(0 0 0 / 0.45)"
+        }
+      },
+      "docs": "Identical API to `essential-dialog` apart from two Motion-only props: `bounce` (the opening spring's overshoot) and `dismissOnOutsideClick` (always on here). Flip and CustomEase have been free since GSAP 3.13."
     },
     {
       "name": "essential-dialog-demo",
@@ -46,10 +87,36 @@
       "title": "Essential Dialog Demo",
       "description": "The shadcn/ui Dialog demo, swapped over to essential-dialog: same Button, Field, Input and Label children, morphing entry and exit.",
       "author": "Anthony Cifuentes",
-      "registryDependencies": ["essential-dialog", "button", "field", "input", "label"],
+      "registryDependencies": [
+        "essential-dialog",
+        "button",
+        "field",
+        "input",
+        "label"
+      ],
       "files": [
         {
           "path": "registry/essential-dialog-demo/components/essential-dialog-demo.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "essential-dialog-gsap-demo",
+      "type": "registry:block",
+      "title": "Essential Dialog Demo (GSAP)",
+      "description": "The same demo against the GSAP build, so the two can be dropped side by side.",
+      "author": "Anthony Cifuentes",
+      "registryDependencies": [
+        "essential-dialog-gsap",
+        "button",
+        "field",
+        "input",
+        "label"
+      ],
+      "files": [
+        {
+          "path": "registry/essential-dialog-gsap-demo/components/essential-dialog-gsap-demo.tsx",
           "type": "registry:component"
         }
       ]
