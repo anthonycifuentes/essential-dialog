@@ -409,6 +409,7 @@ function EssentialDialogContent({
     dialog: dialogRef,
     surface: surfaceRef,
     window: windowRef,
+    centre: centreRef,
   } = ctx.refs
 
   return (
@@ -431,10 +432,14 @@ function EssentialDialogContent({
       className={cn(
         "fixed inset-0 m-0 h-dvh max-h-dvh w-screen max-w-[100vw] overflow-visible border-0 bg-transparent p-0 text-inherit",
         "backdrop:bg-transparent",
-        /* Not decorative — the hook reads the resting radius off this element,
-           because the surface's own is an inline motion value by then. It is
-           transparent and borderless, so a radius on it paints nothing. */
-        "rounded-(--essential-dialog-radius)"
+        /* showModal() focuses the <dialog> itself — the surface has not mounted
+           yet, so there is nothing inside for the browser to focus instead — and
+           WebKit counts that programmatic focus as :focus-visible where Chromium
+           does not. The result is a UA focus ring on an element the size of the
+           viewport: a blue line around the whole screen, and a ROUNDED one while
+           this element carried the radius oracle. The ring belongs on the
+           controls inside, not on the container that holds them. */
+        "outline-hidden"
       )}
     >
       <AnimatePresence>
@@ -471,9 +476,17 @@ function EssentialDialogContent({
           deliberately left untransformed — see the note at the top of the
           file. */}
       <div
+        ref={centreRef}
         data-slot="essential-dialog-centre"
         className={cn(
           "absolute inset-0 grid place-items-center",
+          /* The radius oracle, moved off the <dialog>. The hook needs a resolved
+             px radius before the surface exists, and reading it off an element
+             that CSS has already computed is the only way to survive a consumer
+             writing `min()` or `clamp()` into the variable. This element is
+             transparent, borderless and never focusable, so the radius paints
+             nothing — which is exactly what it did not do on the dialog. */
+          "rounded-(--essential-dialog-radius)",
           debug && "outline-1 outline-dashed outline-amber-400/60"
         )}
       >

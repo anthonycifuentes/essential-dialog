@@ -380,7 +380,12 @@ function EssentialDialogContent({
         "fixed inset-0 m-0 h-dvh max-h-dvh w-screen max-w-[100vw] overflow-visible border-0 bg-transparent p-0 text-inherit",
         // the real backdrop is the element below: ::backdrop cannot be reached
         // from JS, and its opacity has to track the drag frame by frame
-        "backdrop:bg-transparent"
+        "backdrop:bg-transparent",
+        /* showModal() focuses the <dialog> itself, and WebKit counts that as
+           :focus-visible where Chromium does not — a UA focus ring around an
+           element the size of the viewport. The ring belongs on the controls
+           inside, not on the container. */
+        "outline-hidden"
       )}
     >
       <div

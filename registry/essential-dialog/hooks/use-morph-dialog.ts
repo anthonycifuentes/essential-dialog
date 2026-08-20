@@ -189,6 +189,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
      and crossfaded in on top of it, so anything that does not match — its
      radius, its colour — is a visible seam. */
   const originRef = React.useRef<HTMLDivElement | null>(null)
+  const centreRef = React.useRef<HTMLDivElement | null>(null)
   const dialogRef = React.useRef<HTMLDialogElement | null>(null)
   /* Touch has to choose between dragging the dialog and scrolling its content,
      and it chooses through touch-action — Chrome cancels the pointer the moment
@@ -654,14 +655,16 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
 
     /* Read the trigger BEFORE anything hides it, and before the dialog opens —
        these are the values the surface's first frame is built from. */
-    /* The <dialog> carries the same rounded-(--essential-dialog-radius) class
-       purely as an oracle: it is transparent and borderless so a radius on it
-       paints nothing, nothing in the component writes to it, and it resolves
-       whatever CSS length the consumer put in the variable. */
+    /* The centring layer carries the same rounded-(--essential-dialog-radius)
+       class purely as an oracle: it is transparent, borderless and unfocusable,
+       so a radius on it paints nothing, nothing in the component writes to it,
+       and CSS has already resolved whatever length the consumer put in the
+       variable. It is NOT on the <dialog> — that element takes focus, and a
+       radius there rounds the UA focus ring around the whole viewport. */
     const restingRadius = fullscreen
       ? 0 // edge to edge: there is no corner to arrive at
       : radiusOf(
-          getComputedStyle(dialog),
+          getComputedStyle(centreRef.current ?? dialog),
           Number.MAX_SAFE_INTEGER,
           Number.MAX_SAFE_INTEGER
         ).px
@@ -1067,6 +1070,9 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
   const setWindow = React.useCallback((el: HTMLDivElement | null) => {
     windowRef.current = el
   }, [])
+  const setCentre = React.useCallback((el: HTMLDivElement | null) => {
+    centreRef.current = el
+  }, [])
   const setOriginEl = React.useCallback((el: HTMLDivElement | null) => {
     originRef.current = el
   }, [])
@@ -1083,6 +1089,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
       dialog: setDialog,
       surface: measureSurface,
       window: setWindow,
+      centre: setCentre,
       origin: setOriginEl,
       trigger: setTrigger,
       triggerHost: setTriggerHost,
@@ -1091,6 +1098,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
       setDialog,
       measureSurface,
       setWindow,
+      setCentre,
       setOriginEl,
       setTrigger,
       setTriggerHost,
