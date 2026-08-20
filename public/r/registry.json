@@ -20,6 +20,10 @@
         {
           "path": "registry/essential-dialog/hooks/use-morph-dialog.ts",
           "type": "registry:hook"
+        },
+        {
+          "path": "registry/essential-dialog/lib/motion-tokens.ts",
+          "type": "registry:lib"
         }
       ],
       "cssVars": {
