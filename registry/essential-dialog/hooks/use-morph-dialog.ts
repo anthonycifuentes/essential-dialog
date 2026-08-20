@@ -11,6 +11,14 @@ import {
   type PanInfo,
 } from "motion/react"
 
+import {
+  DURATION,
+  EASE_IN_OUT,
+  EASE_OUT,
+  SPRING_LAYOUT,
+  SPRING_PRESS,
+} from "@/registry/essential-dialog/lib/motion-tokens"
+
 /* ---------------------------------------------------------------------------
  * SPIKE — the essential-dialog morph, re-driven by Motion instead of GSAP Flip.
  *
@@ -82,9 +90,11 @@ export type MorphDialogOptions = {
 }
 
 const DEFAULTS = {
-  openDuration: 0.35,
+  /* The morph is a shared spatial surface, so its shape comes from the token
+     rather than from numbers written here. */
+  openDuration: SPRING_LAYOUT.visualDuration,
   closeDuration: 0.45,
-  bounce: 0.3,
+  bounce: SPRING_LAYOUT.bounce,
   dismissDistance: 100,
   dismissSpeed: 0.5,
   dragFalloff: 415,
@@ -673,9 +683,9 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
          handed over in ~130ms, as in the GSAP build. */
       surfaceBackground.set(cs.backgroundColor)
       animate(surfaceBackground, restingBackground, {
-        duration: reduced ? 0 : 0.13,
+        duration: reduced ? 0 : DURATION.colorHandover,
         delay: reduced ? 0 : 0.02,
-        ease: "easeOut",
+        ease: EASE_OUT,
       })
       shapeRef.current = { round: r.round, origin: r.px, target: restingRadius }
     } else {
@@ -774,7 +784,7 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
       const handover = {
         duration: reduced ? 0 : o2.closeDuration * 0.42,
         delay: reduced ? 0 : o2.closeDuration * 0.58,
-        ease: "easeIn" as const,
+        ease: EASE_OUT,
       }
       /* Both ends of the crossfade run the same handover: the surface fading
          out, and the placeholder fading in underneath it. */
@@ -991,7 +1001,9 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
         close()
         return
       }
-      const spring = { type: "spring" as const, visualDuration: 0.4, bounce: 0.18 }
+      /* Settling back from a drag that was not carried through — pressable
+         feedback, not spatial movement. */
+      const spring = SPRING_PRESS
       animate(dragX, 0, spring)
       animate(dragScale, 1, spring)
       animate(dragY, 0, spring)
@@ -1107,13 +1119,30 @@ export function useMorphDialog(options: MorphDialogOptions = {}) {
        full size and then collapses, which a spring cannot express. */
     openTransition: reduced
       ? { duration: 0 }
-      : { type: "spring" as const, visualDuration: o.openDuration, bounce: o.bounce },
+      : { ...SPRING_LAYOUT, visualDuration: o.openDuration, bounce: o.bounce },
     closeTransition: reduced
       ? { duration: 0 }
-      : { duration: o.closeDuration, ease: "easeInOut" as const },
+      : { duration: o.closeDuration, ease: EASE_IN_OUT },
     /* How long AnimatePresence has to keep the exiting surface mounted. Not a
        transition — a duration handed to usePresence; see HoldPresence. */
-    holdMs: reduced ? 0 : o.closeDuration,
+    /* Long enough for whatever is still fading. Under reduced motion the morph
+       is instant but the opacity is not, so presence still has to be held. */
+    holdMs: reduced ? DURATION.reducedOut : o.closeDuration,
+    /* Reduced motion keeps useful opacity feedback and removes travel, scale
+       and parallax — so the surface still fades, it just does not fly. */
+    reducedFade: reduced
+      ? {
+          initial: { opacity: 0 },
+          animate: {
+            opacity: 1,
+            transition: { duration: DURATION.reducedIn, ease: EASE_OUT },
+          },
+          exit: {
+            opacity: 0,
+            transition: { duration: DURATION.reducedOut, ease: EASE_OUT },
+          },
+        }
+      : undefined,
     refs,
     values: {
       contentTransform,

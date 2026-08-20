@@ -5,6 +5,10 @@ import { AnimatePresence, motion, usePresence } from "motion/react"
 
 import { cn } from "@/lib/utils"
 import {
+  DURATION,
+  EASE_OUT,
+} from "@/registry/essential-dialog/lib/motion-tokens"
+import {
   useMorphDialog,
   type MorphDialogOptions,
 } from "@/registry/essential-dialog/hooks/use-morph-dialog"
@@ -390,6 +394,7 @@ function EssentialDialogContent({
     debug,
     openTransition,
     holdMs,
+    reducedFade,
     onExitComplete,
     dismissHandlers,
     values,
@@ -438,10 +443,19 @@ function EssentialDialogContent({
             key="backdrop"
             data-slot="essential-dialog-backdrop"
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1, transition: { duration: 0.12, ease: "linear" } }}
+            /* An entrance and an exit, so both take EASE_OUT — `linear` in this
+               system is for progress, which a backdrop is not. */
+            animate={{
+              opacity: 1,
+              transition: { duration: DURATION.backdropIn, ease: EASE_OUT },
+            }}
             exit={{
               opacity: 0,
-              transition: { duration: 0.25, ease: "easeIn", delay: 0.1 },
+              transition: {
+                duration: DURATION.backdropOut,
+                ease: EASE_OUT,
+                delay: 0.1,
+              },
             }}
             className={cn(
               "absolute inset-0 z-0 bg-(--essential-dialog-backdrop)",
@@ -477,6 +491,11 @@ function EssentialDialogContent({
               /* Governs the OPEN: the element being animated TO is this one. */
               transition={openTransition}
               onLayoutAnimationStart={onMorphStart}
+              /* Reduced motion is a motion state, not an afterthought: the
+                 layout transition collapses to nothing so there is no travel or
+                 scale, and this puts the opacity feedback back. Undefined at
+                 every other time, so it costs nothing. */
+              {...reducedFade}
               data-slot="essential-dialog-content"
               data-fullscreen={fullscreen ? "true" : undefined}
               onPointerDown={startDrag}
